@@ -1,22 +1,18 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   LayoutDashboard, Wrench, ClipboardList, Boxes, CalendarClock,
-  AlertTriangle, CheckCircle2, Clock, Plus, X, ChevronRight,
+  AlertTriangle, CheckCircle2, Clock, Plus, X, ChevronRight, ChevronLeft,
   Search, Gauge, TrendingUp, TrendingDown, Factory, Sun, Moon,
-  Pencil, Save, Trash2
+  Pencil, Save, Trash2, ArrowLeft, History, Link2
 } from "lucide-react";
 import {
-  LineChart, Line, BarChart, Bar, AreaChart, Area,
+  LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
 
-/* ---------------------------------------------------
+/* ===================================================
    THEME: "Industrial Steel & Ember"
-   Steel grays + ember orange accent, consistent with
-   WM - Training brand materials. Toggle between a
-   workshop-floor dark mode and a projector-friendly
-   light mode.
---------------------------------------------------- */
+=================================================== */
 const THEMES = {
   dark: {
     bg: "#15181c", panel: "#1c2126", panel2: "#22272d", border: "#2f363d",
@@ -34,6 +30,24 @@ const THEMES = {
   },
 };
 
+/* ===================================================
+   ID GENERATOR — counter global murni naik, tidak pernah
+   dihitung ulang dari isi array (itu penyebab bug lama:
+   filter+length salah sehingga mentok di angka yang sama).
+=================================================== */
+function createIdCounter(prefix, startAt) {
+  let counter = startAt;
+  return () => {
+    const year = new Date().getFullYear();
+    const num = String(counter).padStart(3, "0");
+    counter += 1;
+    return `${prefix}-${year}-${num}`;
+  };
+}
+
+/* ===================================================
+   SEED DATA
+=================================================== */
 const seedAssets = [
   { id: "AST-101", name: "CNC Milling Machine #1", location: "Line A - Bay 3", status: "running", health: 92, lastMaint: "2026-06-15", nextMaint: "2026-07-15", criticality: "high" },
   { id: "AST-102", name: "Hydraulic Press #2", location: "Line A - Bay 5", status: "running", health: 78, lastMaint: "2026-06-01", nextMaint: "2026-07-10", criticality: "high" },
@@ -44,29 +58,33 @@ const seedAssets = [
 ];
 
 const seedWorkOrders = [
-  { id: "WO-2041", asset: "AST-103", title: "Belt tracking misalignment", type: "corrective", priority: "critical", status: "open", assignee: "Andi P.", created: "2026-07-10", startedAt: "2026-07-10", completedAt: "" },
-  { id: "WO-2040", asset: "AST-105", title: "Scheduled spindle inspection", type: "preventive", priority: "medium", status: "in_progress", assignee: "Budi S.", created: "2026-07-08", startedAt: "2026-07-08", completedAt: "" },
-  { id: "WO-2039", asset: "AST-102", title: "Hydraulic fluid replacement", type: "preventive", priority: "low", status: "in_progress", assignee: "Citra W.", created: "2026-07-07", startedAt: "2026-07-07", completedAt: "" },
-  { id: "WO-2038", asset: "AST-101", title: "Vibration anomaly check", type: "predictive", priority: "high", status: "open", assignee: "Unassigned", created: "2026-07-09", startedAt: "2026-07-09", completedAt: "" },
-  { id: "WO-2037", asset: "AST-104", title: "Monthly filter replacement", type: "preventive", priority: "low", status: "completed", assignee: "Andi P.", created: "2026-06-28", startedAt: "2026-06-28", completedAt: "2026-06-28" },
-  { id: "WO-2036", asset: "AST-106", title: "Quarterly water treatment check", type: "preventive", priority: "medium", status: "completed", assignee: "Dedi R.", created: "2026-06-25", startedAt: "2026-06-25", completedAt: "2026-06-25" },
-  { id: "WO-2035", asset: "AST-103", title: "Conveyor motor overheating", type: "corrective", priority: "critical", status: "completed", assignee: "Andi P.", created: "2026-06-14", startedAt: "2026-06-14 08:00", completedAt: "2026-06-14 13:30" },
-  { id: "WO-2034", asset: "AST-102", title: "Hydraulic seal leak", type: "corrective", priority: "high", status: "completed", assignee: "Citra W.", created: "2026-06-02", startedAt: "2026-06-02 09:15", completedAt: "2026-06-02 12:45" },
-  { id: "WO-2033", asset: "AST-105", title: "Chuck jamming during operation", type: "corrective", priority: "high", status: "completed", assignee: "Budi S.", created: "2026-05-20", startedAt: "2026-05-20 07:30", completedAt: "2026-05-20 12:00" },
-  { id: "WO-2032", asset: "AST-103", title: "Belt tear — emergency stop", type: "corrective", priority: "critical", status: "completed", assignee: "Andi P.", created: "2026-05-08", startedAt: "2026-05-08 10:00", completedAt: "2026-05-08 16:15" },
-  { id: "WO-2031", asset: "AST-104", title: "Compressor pressure drop", type: "corrective", priority: "medium", status: "completed", assignee: "Dedi R.", created: "2026-04-22", startedAt: "2026-04-22 08:45", completedAt: "2026-04-22 11:20" },
-  { id: "WO-2030", asset: "AST-102", title: "Hydraulic pressure irregular", type: "corrective", priority: "high", status: "completed", assignee: "Citra W.", created: "2026-04-05", startedAt: "2026-04-05 09:00", completedAt: "2026-04-05 15:40" },
-  { id: "WO-2029", asset: "AST-103", title: "Roller bearing failure", type: "corrective", priority: "critical", status: "completed", assignee: "Andi P.", created: "2026-03-18", startedAt: "2026-03-18 07:00", completedAt: "2026-03-18 14:20" },
-  { id: "WO-2028", asset: "AST-101", title: "Spindle vibration excessive", type: "corrective", priority: "medium", status: "completed", assignee: "Budi S.", created: "2026-03-02", startedAt: "2026-03-02 09:30", completedAt: "2026-03-02 12:10" },
-];
+  { id: "WO-2026-041", asset: "AST-103", title: "Belt tracking misalignment", type: "corrective", priority: "critical", status: "open", assignee: "Andi P.", created: "2026-07-10", startedAt: "2026-07-10", completedAt: "", sourcePmId: null },
+  { id: "WO-2026-040", asset: "AST-105", title: "Scheduled spindle inspection", type: "preventive", priority: "medium", status: "in_progress", assignee: "Budi S.", created: "2026-07-08", startedAt: "2026-07-08", completedAt: "", sourcePmId: null },
+  { id: "WO-2026-039", asset: "AST-102", title: "Hydraulic fluid replacement", type: "preventive", priority: "low", status: "in_progress", assignee: "Citra W.", created: "2026-07-07", startedAt: "2026-07-07", completedAt: "", sourcePmId: null },
+  { id: "WO-2026-038", asset: "AST-101", title: "Vibration anomaly check", type: "predictive", priority: "high", status: "open", assignee: "Unassigned", created: "2026-07-09", startedAt: "2026-07-09", completedAt: "", sourcePmId: null },
+  { id: "WO-2026-037", asset: "AST-104", title: "Monthly filter replacement", type: "preventive", priority: "low", status: "completed", assignee: "Andi P.", created: "2026-06-28", startedAt: "2026-06-28", completedAt: "2026-06-28", sourcePmId: null },
+  { id: "WO-2026-036", asset: "AST-106", title: "Quarterly water treatment check", type: "preventive", priority: "medium", status: "completed", assignee: "Dedi R.", created: "2026-06-25", startedAt: "2026-06-25", completedAt: "2026-06-25", sourcePmId: null },
+  { id: "WO-2026-035", asset: "AST-103", title: "Conveyor motor overheating", type: "corrective", priority: "critical", status: "completed", assignee: "Andi P.", created: "2026-06-14", startedAt: "2026-06-14 08:00", completedAt: "2026-06-14 13:30", sourcePmId: null },
+  { id: "WO-2026-034", asset: "AST-102", title: "Hydraulic seal leak", type: "corrective", priority: "high", status: "completed", assignee: "Citra W.", created: "2026-06-02", startedAt: "2026-06-02 09:15", completedAt: "2026-06-02 12:45", sourcePmId: null },
+  { id: "WO-2026-033", asset: "AST-105", title: "Chuck jamming during operation", type: "corrective", priority: "high", status: "completed", assignee: "Budi S.", created: "2026-05-20", startedAt: "2026-05-20 07:30", completedAt: "2026-05-20 12:00", sourcePmId: null },
+  { id: "WO-2026-032", asset: "AST-103", title: "Belt tear — emergency stop", type: "corrective", priority: "critical", status: "completed", assignee: "Andi P.", created: "2026-05-08", startedAt: "2026-05-08 10:00", completedAt: "2026-05-08 16:15", sourcePmId: null },
+  { id: "WO-2026-031", asset: "AST-104", title: "Compressor pressure drop", type: "corrective", priority: "medium", status: "completed", assignee: "Dedi R.", created: "2026-04-22", startedAt: "2026-04-22 08:45", completedAt: "2026-04-22 11:20", sourcePmId: null },
+  { id: "WO-2026-030", asset: "AST-102", title: "Hydraulic pressure irregular", type: "corrective", priority: "high", status: "completed", assignee: "Citra W.", created: "2026-04-05", startedAt: "2026-04-05 09:00", completedAt: "2026-04-05 15:40", sourcePmId: null },
+  { id: "WO-2026-029", asset: "AST-103", title: "Roller bearing failure", type: "corrective", priority: "critical", status: "completed", assignee: "Andi P.", created: "2026-03-18", startedAt: "2026-03-18 07:00", completedAt: "2026-03-18 14:20", sourcePmId: null },
+  { id: "WO-2026-028", asset: "AST-101", title: "Spindle vibration excessive", type: "corrective", priority: "medium", status: "completed", assignee: "Budi S.", created: "2026-03-02", startedAt: "2026-03-02 09:30", completedAt: "2026-03-02 12:10", sourcePmId: null },
+].map(w => ({ ...w, cycleProcessed: true, assetImpactOpened: true, assetImpactCompleted: true }));
+// ^ Data historis awal ditandai "sudah diproses" supaya efek otomatis
+//   (auto-cycle PM & dampak ke status/health aset) hanya berlaku untuk
+//   WO yang dibuat/diselesaikan lewat interaksi pengguna setelah app berjalan,
+//   bukan menimpa kondisi aset yang sudah sengaja diatur di seed data.
 
 const seedPM = [
-  { id: "PM-01", asset: "AST-101", task: "Pelumasan spindle & pemeriksaan alignment", freq: "Bulanan", due: "2026-07-15", status: "upcoming" },
-  { id: "PM-02", asset: "AST-102", task: "Penggantian oli hidrolik", freq: "Bulanan", due: "2026-07-10", status: "due_soon" },
-  { id: "PM-03", asset: "AST-103", task: "Inspeksi belt & roller conveyor", freq: "Mingguan", due: "2026-07-05", status: "overdue" },
-  { id: "PM-04", asset: "AST-104", task: "Penggantian filter udara", freq: "Bulanan", due: "2026-08-01", status: "upcoming" },
-  { id: "PM-05", asset: "AST-105", task: "Kalibrasi tailstock & pemeriksaan chuck", freq: "3 Bulanan", due: "2026-07-18", status: "due_soon" },
-  { id: "PM-06", asset: "AST-106", task: "Pemeriksaan kualitas air pendingin", freq: "3 Bulanan", due: "2026-08-10", status: "upcoming" },
+  { id: "PM-2026-001", asset: "AST-101", task: "Pelumasan spindle & pemeriksaan alignment", freq: "Bulanan", due: "2026-07-15", pic: "Andi P.", linkedWO: null },
+  { id: "PM-2026-002", asset: "AST-102", task: "Penggantian oli hidrolik", freq: "Bulanan", due: "2026-07-10", pic: "Citra W.", linkedWO: null },
+  { id: "PM-2026-003", asset: "AST-103", task: "Inspeksi belt & roller conveyor", freq: "Mingguan", due: "2026-07-05", pic: "Andi P.", linkedWO: null },
+  { id: "PM-2026-004", asset: "AST-104", task: "Penggantian filter udara", freq: "Bulanan", due: "2026-08-01", pic: "Dedi R.", linkedWO: null },
+  { id: "PM-2026-005", asset: "AST-105", task: "Kalibrasi tailstock & pemeriksaan chuck", freq: "3 Bulanan", due: "2026-07-18", pic: "Budi S.", linkedWO: null },
+  { id: "PM-2026-006", asset: "AST-106", task: "Pemeriksaan kualitas air pendingin", freq: "3 Bulanan", due: "2026-08-10", pic: "Dedi R.", linkedWO: null },
 ];
 
 /* ---------------------------------------------------
@@ -99,6 +117,9 @@ const woTrend = [
   { bulan: "Jul", korektif: 5, preventif: 15 },
 ];
 
+/* ===================================================
+   METADATA & KALKULASI
+=================================================== */
 function getMeta(C) {
   const statusMeta = {
     running:     { label: "Beroperasi",  color: C.ok },
@@ -120,39 +141,27 @@ function getMeta(C) {
   return { statusMeta, priorityMeta };
 }
 
-/* ---------------------------------------------------
-   KALKULASI MTTR & MTBF
-   MTTR = rata-rata (waktu selesai - waktu mulai) untuk
-          semua work order KOREKTIF yang sudah selesai.
-   MTBF = rata-rata jarak waktu antar kejadian breakdown
-          (work order korektif) berturut-turut, per aset,
-          lalu dirata-rata ke semua aset.
---------------------------------------------------- */
 function calcMTTR(workOrders) {
   const finished = workOrders.filter(
     w => w.type === "corrective" && w.status === "completed" && w.startedAt && w.completedAt
   );
   if (finished.length === 0) return null;
-
   const totalHours = finished.reduce((sum, w) => {
     const start = new Date(w.startedAt.length > 10 ? w.startedAt : w.startedAt + " 00:00");
     const end = new Date(w.completedAt.length > 10 ? w.completedAt : w.completedAt + " 00:00");
     const hours = (end - start) / (1000 * 60 * 60);
     return sum + Math.max(hours, 0);
   }, 0);
-
   return { value: totalHours / finished.length, sampleSize: finished.length };
 }
 
 function calcMTBF(workOrders) {
   const corrective = workOrders.filter(w => w.type === "corrective" && w.status === "completed" && w.startedAt);
-
   const byAsset = {};
   corrective.forEach(w => {
     if (!byAsset[w.asset]) byAsset[w.asset] = [];
     byAsset[w.asset].push(new Date(w.startedAt.length > 10 ? w.startedAt : w.startedAt + " 00:00"));
   });
-
   const gaps = [];
   Object.values(byAsset).forEach(dates => {
     dates.sort((a, b) => a - b);
@@ -161,12 +170,48 @@ function calcMTBF(workOrders) {
       if (hours > 0) gaps.push(hours);
     }
   });
-
   if (gaps.length === 0) return null;
   const avgHours = gaps.reduce((s, h) => s + h, 0) / gaps.length;
   return { value: avgHours, sampleSize: gaps.length };
 }
 
+const DUE_SOON_WINDOW_DAYS = 7;
+
+function computeAutoPmStatus(due) {
+  if (!due) return "upcoming";
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const dueDate = new Date(due + "T00:00:00");
+  const diffDays = Math.round((dueDate - today) / (1000 * 60 * 60 * 24));
+  if (diffDays < 0) return "overdue";
+  if (diffDays <= DUE_SOON_WINDOW_DAYS) return "due_soon";
+  return "upcoming";
+}
+
+function freqToDays(freq) {
+  const f = (freq || "").toLowerCase();
+  const m = f.match(/(\d+)/);
+  const multiplier = m ? parseInt(m[1], 10) : 1;
+  if (f.includes("minggu")) return 7 * multiplier;
+  if (f.includes("tahun")) return 365 * multiplier;
+  return 30 * multiplier;
+}
+
+function addDays(dateStr, days) {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function nowStamp() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function todayStr() {
+  return nowStamp().split(" ")[0];
+}
 function Badge({ color, children }) {
   return (
     <span style={{
@@ -192,20 +237,22 @@ function Card({ children, style, C }) {
   );
 }
 
-function StatCard({ icon: Icon, label, value, sub, accent, C }) {
+function StatCard({ icon: Icon, label, value, sub, accent, C, onClick }) {
   return (
-    <Card C={C} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div style={{ fontSize: 13, color: C.textDim, fontWeight: 500 }}>{label}</div>
-        <div style={{
-          width: 32, height: 32, borderRadius: 8, background: (accent || C.ember) + "20",
-          display: "flex", alignItems: "center", justifyContent: "center"
-        }}>
-          <Icon size={17} color={accent || C.ember} />
+    <Card C={C} style={{ display: "flex", flexDirection: "column", gap: 10, cursor: onClick ? "pointer" : "default" }}>
+      <div onClick={onClick} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <div style={{ fontSize: 13, color: C.textDim, fontWeight: 500 }}>{label}</div>
+          <div style={{
+            width: 32, height: 32, borderRadius: 8, background: (accent || C.ember) + "20",
+            display: "flex", alignItems: "center", justifyContent: "center"
+          }}>
+            <Icon size={17} color={accent || C.ember} />
+          </div>
         </div>
+        <div style={{ fontSize: 28, fontWeight: 700, color: C.text, letterSpacing: -0.5 }}>{value}</div>
+        {sub && <div style={{ fontSize: 12.5, color: C.textDim }}>{sub}</div>}
       </div>
-      <div style={{ fontSize: 28, fontWeight: 700, color: C.text, letterSpacing: -0.5 }}>{value}</div>
-      {sub && <div style={{ fontSize: 12.5, color: C.textDim }}>{sub}</div>}
     </Card>
   );
 }
@@ -222,10 +269,19 @@ function HealthBar({ value, C }) {
   );
 }
 
-function SectionHeader({ title, subtitle, action, C }) {
+function SectionHeader({ title, subtitle, action, C, onBack }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 18 }}>
       <div>
+        {onBack && (
+          <button onClick={onBack} style={{
+            display: "flex", alignItems: "center", gap: 5, marginBottom: 8,
+            background: "transparent", border: "none", color: C.textDim,
+            fontSize: 12.5, fontWeight: 600, cursor: "pointer", padding: 0
+          }}>
+            <ArrowLeft size={14} /> Kembali
+          </button>
+        )}
         <h2 style={{ fontSize: 19, fontWeight: 700, color: C.text, margin: 0 }}>{title}</h2>
         {subtitle && <p style={{ fontSize: 13, color: C.textDim, margin: "4px 0 0" }}>{subtitle}</p>}
       </div>
@@ -250,6 +306,23 @@ function NavItem({ icon: Icon, label, active, onClick, C }) {
   );
 }
 
+// Tombol berupa teks yang berperilaku seperti link, dipakai untuk
+// membuat ID/nama entitas (aset, WO, PM) bisa diklik untuk navigasi
+// ke halaman detail terkait — inti dari "korelasi antar menu".
+function LinkButton({ children, onClick, C, icon: Icon }) {
+  return (
+    <button onClick={onClick} style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      background: "transparent", border: "none", padding: 0,
+      color: C.emberSoft, fontSize: "inherit", fontWeight: 600,
+      cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 2
+    }}>
+      {Icon && <Icon size={12} />}
+      {children}
+    </button>
+  );
+}
+
 function getInputStyle(C) {
   return {
     padding: "8px 12px", background: C.panel2, border: `1px solid ${C.border}`,
@@ -263,9 +336,8 @@ function getThStyle(C) {
 function getTdStyle(C) {
   return { padding: "11px 14px", color: C.steelLight };
 }
-
-/* ---------------- DASHBOARD ---------------- */
-function Dashboard({ assets, workOrders, pms, C }) {
+/* ================== DASHBOARD ================== */
+function Dashboard({ assets, workOrders, pms, C, onOpenAsset, onOpenWO, onNavigateTab }) {
   const { statusMeta, priorityMeta } = getMeta(C);
   const running = assets.filter(a => a.status === "running").length;
   const down = assets.filter(a => a.status === "down").length;
@@ -277,10 +349,10 @@ function Dashboard({ assets, workOrders, pms, C }) {
     <div>
       <SectionHeader C={C} title="Dashboard Maintenance" subtitle="Ringkasan performa aset & aktivitas maintenance hari ini" />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 20 }}>
-        <StatCard C={C} icon={Factory} label="Aset Beroperasi" value={`${running}/${assets.length}`} sub={`${down} unit breakdown`} accent={C.ok} />
-        <StatCard C={C} icon={ClipboardList} label="Work Order Aktif" value={openWO} sub="Perlu tindak lanjut" accent={C.ember} />
-        <StatCard C={C} icon={AlertTriangle} label="PM Terlambat" value={overduePM} sub="Melewati jadwal" accent={C.danger} />
-        <StatCard C={C} icon={Gauge} label="Rata-rata Health Score" value={`${avgHealth}%`} sub="Seluruh aset" accent={C.warn} />
+        <StatCard C={C} icon={Factory} label="Aset Beroperasi" value={`${running}/${assets.length}`} sub={`${down} unit breakdown`} accent={C.ok} onClick={() => onNavigateTab("assets")} />
+        <StatCard C={C} icon={ClipboardList} label="Work Order Aktif" value={openWO} sub="Perlu tindak lanjut" accent={C.ember} onClick={() => onNavigateTab("wo")} />
+        <StatCard C={C} icon={AlertTriangle} label="PM Terlambat" value={overduePM} sub="Melewati jadwal" accent={C.danger} onClick={() => onNavigateTab("pm")} />
+        <StatCard C={C} icon={Gauge} label="Rata-rata Health Score" value={`${avgHealth}%`} sub="Seluruh aset" accent={C.warn} onClick={() => onNavigateTab("kpi")} />
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14 }}>
@@ -290,7 +362,7 @@ function Dashboard({ assets, workOrders, pms, C }) {
             {assets.map(a => (
               <div key={a.id}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                  <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{a.name}</span>
+                  <LinkButton C={C} onClick={() => onOpenAsset(a.id)}>{a.name}</LinkButton>
                   <Badge color={statusMeta[a.status].color}>{statusMeta[a.status].label}</Badge>
                 </div>
                 <HealthBar C={C} value={a.health} />
@@ -308,7 +380,7 @@ function Dashboard({ assets, workOrders, pms, C }) {
                 padding: "9px 0", borderBottom: `1px solid ${C.border}`
               }}>
                 <div>
-                  <div style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{w.title}</div>
+                  <LinkButton C={C} onClick={() => onOpenWO(w.id)}>{w.title}</LinkButton>
                   <div style={{ fontSize: 11.5, color: C.textDim, marginTop: 2 }}>{w.id} • {w.asset}</div>
                 </div>
                 <Badge color={priorityMeta[w.priority].color}>{priorityMeta[w.priority].label}</Badge>
@@ -320,36 +392,36 @@ function Dashboard({ assets, workOrders, pms, C }) {
     </div>
   );
 }
-
-/* ---------------- WORK ORDERS ---------------- */
-function WorkOrders({ workOrders, setWorkOrders, assets, C }) {
+/* ================== WORK ORDERS ================== */
+function WorkOrders({ workOrders, setWorkOrders, assets, pms, C, genWoId, onOpenAsset, onOpenPm, filterAssetId, onClearAssetFilter }) {
   const { statusMeta, priorityMeta } = getMeta(C);
   const inputStyle = getInputStyle(C);
   const thStyle = getThStyle(C);
   const tdStyle = getTdStyle(C);
   const [filter, setFilter] = useState("all");
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ title: "", asset: assets[0].id, type: "corrective", priority: "medium" });
+  const [form, setForm] = useState({ title: "", asset: assets[0]?.id || "", type: "corrective", priority: "medium", assignee: "" });
 
-  const filtered = filter === "all" ? workOrders : workOrders.filter(w => w.status === filter);
-
-  const nowStamp = () => {
-    const d = new Date();
-    const pad = n => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
+  const scoped = filterAssetId ? workOrders.filter(w => w.asset === filterAssetId) : workOrders;
+  const filtered = filter === "all" ? scoped : scoped.filter(w => w.status === filter);
 
   const addWO = () => {
     if (!form.title.trim()) return;
-    const newId = "WO-" + (2042 + workOrders.filter(w => w.id.startsWith("WO-204")).length);
     const stamp = nowStamp();
-    setWorkOrders([{ ...form, id: newId, status: "open", assignee: "Unassigned", created: stamp.split(" ")[0], startedAt: stamp, completedAt: "" }, ...workOrders]);
-    setForm({ title: "", asset: assets[0].id, type: "corrective", priority: "medium" });
+    const newWO = {
+      ...form, id: genWoId(), status: "open",
+      assignee: form.assignee.trim() || "Unassigned",
+      created: stamp.split(" ")[0], startedAt: stamp, completedAt: "",
+      sourcePmId: null,
+      cycleProcessed: false, assetImpactOpened: false, assetImpactCompleted: false,
+    };
+    setWorkOrders(prev => [newWO, ...prev]);
+    setForm({ title: "", asset: assets[0]?.id || "", type: "corrective", priority: "medium", assignee: "" });
     setShowForm(false);
   };
 
   const advanceStatus = (id) => {
-    setWorkOrders(workOrders.map(w => {
+    setWorkOrders(prev => prev.map(w => {
       if (w.id !== id) return w;
       const next = w.status === "open" ? "in_progress" : w.status === "in_progress" ? "completed" : "completed";
       const patch = { status: next };
@@ -359,12 +431,21 @@ function WorkOrders({ workOrders, setWorkOrders, assets, C }) {
     }));
   };
 
+  const updateAssignee = (id, name) => {
+    setWorkOrders(prev => prev.map(w => w.id === id ? { ...w, assignee: name || "Unassigned" } : w));
+  };
+
+  const assetName = (id) => assets.find(a => a.id === id)?.name || id;
+
   return (
     <div>
       <SectionHeader
         C={C}
         title="Work Order Management"
-        subtitle="Kelola permintaan kerja korektif, preventif, dan prediktif"
+        subtitle={filterAssetId
+          ? `Menampilkan WO untuk ${assetName(filterAssetId)} saja`
+          : "Kelola permintaan kerja korektif, preventif, dan prediktif"}
+        onBack={filterAssetId ? onClearAssetFilter : undefined}
         action={
           <button onClick={() => setShowForm(!showForm)} style={{
             display: "flex", alignItems: "center", gap: 6, padding: "8px 14px",
@@ -401,6 +482,16 @@ function WorkOrders({ workOrders, setWorkOrders, assets, C }) {
               <option value="critical">Kritis</option>
             </select>
           </div>
+          <div style={{ marginTop: 10 }}>
+            <input placeholder="PIC (Penanggung Jawab) — kosongkan jika belum ditentukan" value={form.assignee}
+              onChange={e => setForm({ ...form, assignee: e.target.value })}
+              style={{ ...inputStyle, width: "100%", maxWidth: 380 }} />
+          </div>
+          {form.type === "corrective" && (
+            <div style={{ fontSize: 11.5, color: C.warn, marginTop: 8, display: "flex", alignItems: "center", gap: 5 }}>
+              <AlertTriangle size={12} /> WO korektif akan otomatis mengubah status aset menjadi "Breakdown" saat disimpan.
+            </div>
+          )}
           <button onClick={addWO} style={{
             marginTop: 12, padding: "8px 16px", background: C.ember, color: "#fff",
             border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer"
@@ -425,34 +516,143 @@ function WorkOrders({ workOrders, setWorkOrders, assets, C }) {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: C.panel2 }}>
-              {["ID", "Pekerjaan", "Aset", "Tipe", "Prioritas", "Status", "PIC", ""].map(h => (
+              {["ID", "Pekerjaan", "Aset", "Sumber", "Tipe", "Prioritas", "Status", "PIC", ""].map(h => (
                 <th key={h} style={thStyle}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {filtered.map(w => (
-              <tr key={w.id} style={{ borderTop: `1px solid ${C.border}` }}>
-                <td style={tdStyle}><span style={{ color: C.textDim }}>{w.id}</span></td>
-                <td style={{ ...tdStyle, color: C.text, fontWeight: 500 }}>{w.title}</td>
-                <td style={tdStyle}>{w.asset}</td>
-                <td style={{ ...tdStyle, textTransform: "capitalize" }}>{w.type}</td>
-                <td style={tdStyle}><Badge color={priorityMeta[w.priority].color}>{priorityMeta[w.priority].label}</Badge></td>
-                <td style={tdStyle}><Badge color={statusMeta[w.status].color}>{statusMeta[w.status].label}</Badge></td>
-                <td style={tdStyle}>{w.assignee}</td>
-                <td style={tdStyle}>
-                  {w.status !== "completed" && (
-                    <button onClick={() => advanceStatus(w.id)} style={{
-                      display: "flex", alignItems: "center", gap: 4, padding: "5px 10px",
-                      background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6,
-                      color: C.emberSoft, fontSize: 12, fontWeight: 600, cursor: "pointer"
-                    }}>
-                      {w.status === "open" ? "Mulai" : "Selesaikan"} <ChevronRight size={13} />
-                    </button>
-                  )}
+            {filtered.map(w => {
+              const linkedPm = w.sourcePmId ? pms.find(p => p.id === w.sourcePmId) : null;
+              return (
+                <tr key={w.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                  <td style={tdStyle}><span style={{ color: C.textDim }}>{w.id}</span></td>
+                  <td style={{ ...tdStyle, color: C.text, fontWeight: 500 }}>{w.title}</td>
+                  <td style={tdStyle}>
+                    <LinkButton C={C} onClick={() => onOpenAsset(w.asset)}>{w.asset}</LinkButton>
+                  </td>
+                  <td style={tdStyle}>
+                    {w.sourcePmId ? (
+                      <LinkButton C={C} icon={Link2} onClick={() => onOpenPm(w.sourcePmId)}>
+                        {w.sourcePmId}
+                      </LinkButton>
+                    ) : (
+                      <span style={{ fontSize: 11.5, color: C.textDim }}>Manual</span>
+                    )}
+                  </td>
+                  <td style={{ ...tdStyle, textTransform: "capitalize" }}>{w.type}</td>
+                  <td style={tdStyle}><Badge color={priorityMeta[w.priority].color}>{priorityMeta[w.priority].label}</Badge></td>
+                  <td style={tdStyle}><Badge color={statusMeta[w.status].color}>{statusMeta[w.status].label}</Badge></td>
+                  <td style={tdStyle}>
+                    <input
+                      defaultValue={w.assignee === "Unassigned" ? "" : w.assignee}
+                      placeholder="Unassigned"
+                      onBlur={e => updateAssignee(w.id, e.target.value.trim())}
+                      style={{ ...inputStyle, width: 100, padding: "5px 8px", fontSize: 12.5 }}
+                    />
+                  </td>
+                  <td style={tdStyle}>
+                    {w.status !== "completed" && (
+                      <button onClick={() => advanceStatus(w.id)} style={{
+                        display: "flex", alignItems: "center", gap: 4, padding: "5px 10px",
+                        background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6,
+                        color: C.emberSoft, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap"
+                      }}>
+                        {w.status === "open" ? "Mulai" : "Selesaikan"} <ChevronRight size={13} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={9} style={{ padding: "24px 14px", textAlign: "center", color: C.textDim, fontSize: 13 }}>
+                  Tidak ada work order yang cocok.
                 </td>
               </tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+/* ================== ASSET DETAIL PAGE ================== */
+function AssetDetail({ asset, workOrders, pms, C, onBack, onOpenWO }) {
+  const { statusMeta, priorityMeta } = getMeta(C);
+  const relatedWO = workOrders.filter(w => w.asset === asset.id).sort((a, b) => (a.created < b.created ? 1 : -1));
+  const relatedPM = pms.filter(p => p.asset === asset.id);
+  const correctiveCount = relatedWO.filter(w => w.type === "corrective").length;
+  const openCount = relatedWO.filter(w => w.status !== "completed").length;
+
+  return (
+    <div>
+      <SectionHeader C={C} title={asset.name} subtitle={`${asset.id} • ${asset.location}`} onBack={onBack} />
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 20 }}>
+        <Card C={C}>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 8 }}>Status Saat Ini</div>
+          <Badge color={statusMeta[asset.status].color}>{statusMeta[asset.status].label}</Badge>
+        </Card>
+        <Card C={C}>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 8 }}>Health Score</div>
+          <HealthBar C={C} value={asset.health} />
+        </Card>
+        <Card C={C}>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 6 }}>Total WO Korektif</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>{correctiveCount}</div>
+        </Card>
+        <Card C={C}>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 6 }}>WO Masih Aktif</div>
+          <div style={{ fontSize: 22, fontWeight: 700, color: openCount > 0 ? C.warn : C.ok }}>{openCount}</div>
+        </Card>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+        <Card C={C}>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 4 }}>Kritikalitas</div>
+          <div style={{ fontSize: 14, color: C.text, fontWeight: 600, textTransform: "capitalize" }}>{asset.criticality}</div>
+        </Card>
+        <Card C={C}>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 4 }}>Jadwal PM Terkait</div>
+          <div style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>{relatedPM.length} jadwal aktif</div>
+        </Card>
+      </div>
+
+      <Card C={C} style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.text }}>
+          Riwayat Work Order — {asset.name}
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: C.panel2 }}>
+              {["ID", "Pekerjaan", "Tipe", "Prioritas", "Status", "Dibuat", "Selesai"].map(h => (
+                <th key={h} style={getThStyle(C)}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {relatedWO.map(w => (
+              <tr key={w.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                <td style={getTdStyle(C)}>
+                  <LinkButton C={C} onClick={() => onOpenWO(w.id)}>{w.id}</LinkButton>
+                </td>
+                <td style={{ ...getTdStyle(C), color: C.text, fontWeight: 500 }}>{w.title}</td>
+                <td style={{ ...getTdStyle(C), textTransform: "capitalize" }}>{w.type}</td>
+                <td style={getTdStyle(C)}><Badge color={priorityMeta[w.priority].color}>{priorityMeta[w.priority].label}</Badge></td>
+                <td style={getTdStyle(C)}><Badge color={statusMeta[w.status].color}>{statusMeta[w.status].label}</Badge></td>
+                <td style={getTdStyle(C)}>{w.created}</td>
+                <td style={getTdStyle(C)}>{w.completedAt ? w.completedAt.split(" ")[0] : "—"}</td>
+              </tr>
             ))}
+            {relatedWO.length === 0 && (
+              <tr>
+                <td colSpan={7} style={{ padding: "24px 14px", textAlign: "center", color: C.textDim, fontSize: 13 }}>
+                  Belum ada riwayat Work Order untuk aset ini.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </Card>
@@ -460,8 +660,8 @@ function WorkOrders({ workOrders, setWorkOrders, assets, C }) {
   );
 }
 
-/* ---------------- ASSETS ---------------- */
-function AssetCard({ asset, C, onSave, onDelete, isEditing, onStartEdit, onStopEdit }) {
+/* ================== ASSET CARD (list view) ================== */
+function AssetCard({ asset, C, onSave, onDelete, isEditing, onStartEdit, onStopEdit, onOpenDetail }) {
   const { statusMeta } = getMeta(C);
   const inputStyle = getInputStyle(C);
   const [draft, setDraft] = useState(asset);
@@ -513,8 +713,10 @@ function AssetCard({ asset, C, onSave, onDelete, isEditing, onStartEdit, onStopE
             </button>
           </div>
         </div>
-        <div style={{ fontSize: 14.5, fontWeight: 600, color: C.text, marginBottom: 2 }}>{asset.name}</div>
-        <div style={{ fontSize: 12, color: C.textDim, marginBottom: 12 }}>{asset.id} • {asset.location}</div>
+        <LinkButton C={C} onClick={() => onOpenDetail(asset.id)}>
+          <span style={{ fontSize: 14.5, fontWeight: 600 }}>{asset.name}</span>
+        </LinkButton>
+        <div style={{ fontSize: 12, color: C.textDim, margin: "2px 0 12px" }}>{asset.id} • {asset.location}</div>
         <HealthBar C={C} value={asset.health} />
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 11.5, color: C.textDim }}>
           <span>Maint. terakhir: {asset.lastMaint}</span>
@@ -582,7 +784,8 @@ function AssetCard({ asset, C, onSave, onDelete, isEditing, onStartEdit, onStopE
   );
 }
 
-function Assets({ assets, setAssets, C }) {
+/* ================== ASSET LIST ================== */
+function Assets({ assets, setAssets, C, onOpenDetail }) {
   const inputStyle = getInputStyle(C);
   const [q, setQ] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -596,22 +799,24 @@ function Assets({ assets, setAssets, C }) {
   );
 
   const saveAsset = (updated) => {
-    setAssets(assets.map(a => a.id === updated.id ? updated : a));
+    setAssets(prev => prev.map(a => a.id === updated.id ? updated : a));
   };
 
   const deleteAsset = (id) => {
-    setAssets(assets.filter(a => a.id !== id));
+    setAssets(prev => prev.filter(a => a.id !== id));
     if (editingId === id) setEditingId(null);
   };
 
   const addAsset = () => {
     if (!form.name.trim()) return;
-    const nums = assets
-      .map(a => parseInt(a.id.replace("AST-", ""), 10))
-      .filter(n => !isNaN(n));
-    const nextNum = (nums.length ? Math.max(...nums) : 100) + 1;
-    const newId = "AST-" + nextNum;
-    setAssets([...assets, { ...form, id: newId, health: Number(form.health) }]);
+    setAssets(prev => {
+      const nums = prev
+        .map(a => parseInt(a.id.replace("AST-", ""), 10))
+        .filter(n => !isNaN(n));
+      const nextNum = (nums.length ? Math.max(...nums) : 100) + 1;
+      const newId = "AST-" + nextNum;
+      return [...prev, { ...form, id: newId, health: Number(form.health) }];
+    });
     setForm({ name: "", location: "", status: "running", criticality: "medium", health: 100, lastMaint: "", nextMaint: "" });
     setShowForm(false);
   };
@@ -621,7 +826,7 @@ function Assets({ assets, setAssets, C }) {
       <SectionHeader
         C={C}
         title="Asset / Equipment Registry"
-        subtitle="Data induk mesin dan peralatan produksi — klik ikon pensil untuk mengubah, tempat sampah untuk hapus"
+        subtitle="Data induk mesin dan peralatan produksi — klik nama aset untuk lihat riwayat lengkap"
         action={
           <button onClick={() => setShowForm(!showForm)} style={{
             display: "flex", alignItems: "center", gap: 6, padding: "8px 14px",
@@ -701,6 +906,7 @@ function Assets({ assets, setAssets, C }) {
             isEditing={editingId === a.id}
             onStartEdit={setEditingId}
             onStopEdit={() => setEditingId(null)}
+            onOpenDetail={onOpenDetail}
           />
         ))}
         {filtered.length === 0 && (
@@ -712,9 +918,8 @@ function Assets({ assets, setAssets, C }) {
     </div>
   );
 }
-
-/* ---------------- PREVENTIVE MAINTENANCE ---------------- */
-function PMRow({ pm, C, onSave, onDelete, assetIds, isEditing, onStartEdit, onStopEdit }) {
+/* ================== PM ROW ================== */
+function PMRow({ pm, C, onSave, onDelete, assetIds, isEditing, onStartEdit, onStopEdit, onGenerateWO, onOpenAsset, onOpenWO }) {
   const { statusMeta } = getMeta(C);
   const tdStyle = getTdStyle(C);
   const inputStyle = getInputStyle(C);
@@ -737,15 +942,29 @@ function PMRow({ pm, C, onSave, onDelete, assetIds, isEditing, onStartEdit, onSt
     return (
       <tr style={{ borderTop: `1px solid ${C.border}` }}>
         <td style={tdStyle}><span style={{ color: C.textDim }}>{pm.id}</span></td>
-        <td style={tdStyle}>{pm.asset}</td>
+        <td style={tdStyle}><LinkButton C={C} onClick={() => onOpenAsset(pm.asset)}>{pm.asset}</LinkButton></td>
         <td style={{ ...tdStyle, color: C.text, fontWeight: 500 }}>{pm.task}</td>
         <td style={tdStyle}>{pm.freq}</td>
+        <td style={tdStyle}>{pm.pic || "Belum ditentukan"}</td>
         <td style={tdStyle}>
           <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
             <CalendarClock size={13} color={C.textDim} /> {pm.due}
           </span>
         </td>
         <td style={tdStyle}><Badge color={statusMeta[pm.status].color}>{statusMeta[pm.status].label}</Badge></td>
+        <td style={tdStyle}>
+          {pm.linkedWO ? (
+            <LinkButton C={C} icon={ClipboardList} onClick={() => onOpenWO(pm.linkedWO)}>{pm.linkedWO}</LinkButton>
+          ) : (
+            <button onClick={() => onGenerateWO(pm)} style={{
+              display: "flex", alignItems: "center", gap: 4, padding: "5px 9px",
+              background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6,
+              color: C.textDim, fontSize: 11.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap"
+            }}>
+              <Plus size={12} /> Buat WO
+            </button>
+          )}
+        </td>
         <td style={tdStyle}>
           <div style={{ display: "flex", gap: 6 }}>
             <button onClick={startEdit} aria-label="Edit jadwal" style={{
@@ -788,14 +1007,17 @@ function PMRow({ pm, C, onSave, onDelete, assetIds, isEditing, onStartEdit, onSt
         <input value={draft.freq} onChange={e => setDraft({ ...draft, freq: e.target.value })} style={{ ...inputStyle, width: 100 }} />
       </td>
       <td style={tdStyle}>
+        <input value={draft.pic || ""} onChange={e => setDraft({ ...draft, pic: e.target.value })} placeholder="Nama PIC" style={{ ...inputStyle, width: 110 }} />
+      </td>
+      <td style={tdStyle}>
         <input type="date" value={draft.due} onChange={e => setDraft({ ...draft, due: e.target.value })} style={inputStyle} />
       </td>
       <td style={tdStyle}>
-        <select value={draft.status} onChange={e => setDraft({ ...draft, status: e.target.value })} style={inputStyle}>
-          <option value="upcoming">Terjadwal</option>
-          <option value="due_soon">Segera Jatuh Tempo</option>
-          <option value="overdue">Terlambat</option>
-        </select>
+        <Badge color={statusMeta[computeAutoPmStatus(draft.due)].color}>{statusMeta[computeAutoPmStatus(draft.due)].label}</Badge>
+        <div style={{ fontSize: 10, color: C.textDim, marginTop: 3 }}>otomatis dari tanggal</div>
+      </td>
+      <td style={tdStyle}>
+        {pm.linkedWO && <span style={{ fontSize: 11.5, color: C.textDim }}>{pm.linkedWO}</span>}
       </td>
       <td style={tdStyle}>
         <button onClick={save} aria-label="Simpan" style={{
@@ -808,34 +1030,31 @@ function PMRow({ pm, C, onSave, onDelete, assetIds, isEditing, onStartEdit, onSt
   );
 }
 
-function PMSchedule({ pms, setPms, assets, C }) {
+/* ================== PM SCHEDULE ================== */
+function PMSchedule({ pms, setPms, assets, C, onGenerateWO, onOpenAsset, onOpenWO, genPmId }) {
   const thStyle = getThStyle(C);
   const inputStyle = getInputStyle(C);
   const assetIds = assets.map(a => a.id);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({
-    asset: assetIds[0], task: "", freq: "Bulanan", due: "", status: "upcoming"
+    asset: assetIds[0] || "", task: "", freq: "Bulanan", due: "", pic: ""
   });
 
   const savePm = (updated) => {
-    setPms(pms.map(p => p.id === updated.id ? updated : p));
+    setPms(prev => prev.map(p => p.id === updated.id ? { ...updated, status: computeAutoPmStatus(updated.due) } : p));
   };
 
   const deletePm = (id) => {
-    setPms(pms.filter(p => p.id !== id));
+    setPms(prev => prev.filter(p => p.id !== id));
     if (editingId === id) setEditingId(null);
   };
 
   const addPm = () => {
     if (!form.task.trim() || !form.due) return;
-    const nums = pms
-      .map(p => parseInt(p.id.replace("PM-", ""), 10))
-      .filter(n => !isNaN(n));
-    const nextNum = (nums.length ? Math.max(...nums) : 0) + 1;
-    const newId = "PM-" + String(nextNum).padStart(2, "0");
-    setPms([...pms, { ...form, id: newId }]);
-    setForm({ asset: assetIds[0], task: "", freq: "Bulanan", due: "", status: "upcoming" });
+    const newId = genPmId();
+    setPms(prev => [...prev, { ...form, id: newId, linkedWO: null, pic: form.pic.trim() || "Belum ditentukan", status: computeAutoPmStatus(form.due) }]);
+    setForm({ asset: assetIds[0] || "", task: "", freq: "Bulanan", due: "", pic: "" });
     setShowForm(false);
   };
 
@@ -844,7 +1063,7 @@ function PMSchedule({ pms, setPms, assets, C }) {
       <SectionHeader
         C={C}
         title="Preventive Maintenance Schedule"
-        subtitle="Jadwal perawatan berkala — klik ikon pensil untuk mengubah, tempat sampah untuk hapus"
+        subtitle="Jadwal perawatan berkala — status otomatis dari tanggal, siklus baru dibuat otomatis saat WO selesai"
         action={
           <button onClick={() => setShowForm(!showForm)} style={{
             display: "flex", alignItems: "center", gap: 6, padding: "8px 14px",
@@ -862,7 +1081,7 @@ function PMSchedule({ pms, setPms, assets, C }) {
             <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>Tambah Jadwal PM</div>
             <X size={16} color={C.textDim} style={{ cursor: "pointer" }} onClick={() => setShowForm(false)} />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 1fr", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr", gap: 10 }}>
             <select value={form.asset} onChange={e => setForm({ ...form, asset: e.target.value })} style={inputStyle}>
               {assetIds.map(id => <option key={id} value={id}>{id}</option>)}
             </select>
@@ -875,11 +1094,14 @@ function PMSchedule({ pms, setPms, assets, C }) {
             <input type="date" value={form.due}
               onChange={e => setForm({ ...form, due: e.target.value })}
               style={inputStyle} />
-            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={inputStyle}>
-              <option value="upcoming">Terjadwal</option>
-              <option value="due_soon">Segera Jatuh Tempo</option>
-              <option value="overdue">Terlambat</option>
-            </select>
+          </div>
+          <div style={{ marginTop: 10 }}>
+            <input placeholder="PIC (Penanggung Jawab) — mis. Andi P." value={form.pic}
+              onChange={e => setForm({ ...form, pic: e.target.value })}
+              style={{ ...inputStyle, width: "100%", maxWidth: 320 }} />
+          </div>
+          <div style={{ fontSize: 11, color: C.textDim, marginTop: 6 }}>
+            Status akan dihitung otomatis dari tanggal jatuh tempo setelah disimpan.
           </div>
           <button onClick={addPm} style={{
             marginTop: 12, padding: "8px 16px", background: C.ember, color: "#fff",
@@ -892,7 +1114,7 @@ function PMSchedule({ pms, setPms, assets, C }) {
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: C.panel2 }}>
-              {["ID", "Aset", "Tugas", "Frekuensi", "Jatuh Tempo", "Status", ""].map(h => (
+              {["ID", "Aset", "Tugas", "Frekuensi", "PIC", "Jatuh Tempo", "Status", "WO Terkait", ""].map(h => (
                 <th key={h} style={thStyle}>{h}</th>
               ))}
             </tr>
@@ -909,11 +1131,14 @@ function PMSchedule({ pms, setPms, assets, C }) {
                 isEditing={editingId === p.id}
                 onStartEdit={setEditingId}
                 onStopEdit={() => setEditingId(null)}
+                onGenerateWO={onGenerateWO}
+                onOpenAsset={onOpenAsset}
+                onOpenWO={onOpenWO}
               />
             ))}
             {pms.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ padding: "24px 14px", textAlign: "center", color: C.textDim, fontSize: 13 }}>
+                <td colSpan={9} style={{ padding: "24px 14px", textAlign: "center", color: C.textDim, fontSize: 13 }}>
                   Belum ada jadwal PM. Klik "Jadwal PM Baru" untuk menambahkan.
                 </td>
               </tr>
@@ -925,12 +1150,64 @@ function PMSchedule({ pms, setPms, assets, C }) {
   );
 }
 
-/* ---------------- KPI / REPORTING ---------------- */
+/* ================== RIWAYAT PM ================== */
+function PMHistory({ history, C, onOpenAsset, onOpenWO }) {
+  const thStyle = getThStyle(C);
+  const tdStyle = getTdStyle(C);
+
+  return (
+    <div>
+      <SectionHeader
+        C={C}
+        title="Riwayat Preventive Maintenance"
+        subtitle="Siklus PM yang sudah selesai dikerjakan — setiap siklus baru otomatis dijadwalkan ulang"
+      />
+      <Card C={C} style={{ padding: 0, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: C.panel2 }}>
+              {["ID Siklus", "Aset", "Tugas", "PIC", "Jatuh Tempo Awal", "Selesai Pada", "WO Terkait"].map(h => (
+                <th key={h} style={thStyle}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((h, idx) => (
+              <tr key={`${h.id}-${h.completedWO}-${idx}`} style={{ borderTop: `1px solid ${C.border}` }}>
+                <td style={tdStyle}><span style={{ color: C.textDim }}>{h.id}</span></td>
+                <td style={tdStyle}><LinkButton C={C} onClick={() => onOpenAsset(h.asset)}>{h.asset}</LinkButton></td>
+                <td style={{ ...tdStyle, color: C.text, fontWeight: 500 }}>{h.task}</td>
+                <td style={tdStyle}>{h.pic || "—"}</td>
+                <td style={tdStyle}>{h.due}</td>
+                <td style={tdStyle}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 5, color: C.ok }}>
+                    <CheckCircle2 size={13} /> {h.completedAt}
+                  </span>
+                </td>
+                <td style={tdStyle}>
+                  <LinkButton C={C} onClick={() => onOpenWO(h.completedWO)}>{h.completedWO}</LinkButton>
+                </td>
+              </tr>
+            ))}
+            {history.length === 0 && (
+              <tr>
+                <td colSpan={7} style={{ padding: "24px 14px", textAlign: "center", color: C.textDim, fontSize: 13 }}>
+                  Belum ada siklus PM yang selesai. Selesaikan Work Order hasil generate dari Jadwal PM untuk melihat riwayatnya di sini.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+/* ================== KPI / REPORTING ================== */
 function KPIReport({ assets, workOrders, C }) {
   const { statusMeta } = getMeta(C);
   const completed = workOrders.filter(w => w.status === "completed").length;
   const total = workOrders.length;
-  const complianceRate = Math.round((completed / total) * 100);
+  const complianceRate = total > 0 ? Math.round((completed / total) * 100) : 0;
   const mttrResult = calcMTTR(workOrders);
   const mtbfResult = calcMTBF(workOrders);
   const mttr = mttrResult ? mttrResult.value.toFixed(1) : "—";
@@ -939,7 +1216,7 @@ function KPIReport({ assets, workOrders, C }) {
         ? `${(mtbfResult.value / 24).toFixed(1)} hari`
         : `${Math.round(mtbfResult.value)} jam`)
     : null;
-  const avgHealth = Math.round(assets.reduce((s, a) => s + a.health, 0) / assets.length);
+  const avgHealth = assets.length > 0 ? Math.round(assets.reduce((s, a) => s + a.health, 0) / assets.length) : 0;
 
   const kpis = [
     { label: "PM Compliance Rate", value: `${complianceRate}%`, trend: "up", icon: CheckCircle2, color: C.ok },
@@ -987,7 +1264,7 @@ function KPIReport({ assets, workOrders, C }) {
               </div>
               <div style={{ height: 6, borderRadius: 4, background: C.panel2 }}>
                 <div style={{
-                  width: `${(b.count / assets.length) * 100}%`, height: "100%", borderRadius: 4,
+                  width: `${assets.length > 0 ? (b.count / assets.length) * 100 : 0}%`, height: "100%", borderRadius: 4,
                   background: b.level === "high" ? C.danger : b.level === "medium" ? C.warn : C.steel
                 }} />
               </div>
@@ -1012,7 +1289,7 @@ function KPIReport({ assets, workOrders, C }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <Card C={C}>
           <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>Tren Health Score per Aset (6 Bulan Terakhir)</div>
-          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 14 }}>Menunjukkan pola degradasi kondisi aset — dasar untuk predictive maintenance</div>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 14 }}>Ilustrasi tren — menunjukkan pola degradasi kondisi aset, dasar untuk predictive maintenance</div>
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={healthTrend} margin={{ top: 4, right: 12, left: -12, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
@@ -1048,7 +1325,7 @@ function KPIReport({ assets, workOrders, C }) {
 
           <Card C={C}>
             <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>Tren Work Order: Korektif vs Preventif</div>
-            <div style={{ fontSize: 12, color: C.textDim, marginBottom: 14 }}>Pergeseran dari reactive menuju proactive maintenance</div>
+            <div style={{ fontSize: 12, color: C.textDim, marginBottom: 14 }}>Ilustrasi tren — pergeseran dari reactive menuju proactive maintenance</div>
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={woTrend} margin={{ top: 4, right: 12, left: -12, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
@@ -1066,22 +1343,239 @@ function KPIReport({ assets, workOrders, C }) {
     </div>
   );
 }
+/* ================== WO DETAIL PAGE ================== */
+function WODetail({ wo, asset, linkedPm, C, onBack, onOpenAsset, onOpenPm }) {
+  const { statusMeta, priorityMeta } = getMeta(C);
+  return (
+    <div>
+      <SectionHeader C={C} title={wo.title} subtitle={wo.id} onBack={onBack} />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 20 }}>
+        <Card C={C}>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 8 }}>Status</div>
+          <Badge color={statusMeta[wo.status].color}>{statusMeta[wo.status].label}</Badge>
+        </Card>
+        <Card C={C}>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 8 }}>Prioritas</div>
+          <Badge color={priorityMeta[wo.priority].color}>{priorityMeta[wo.priority].label}</Badge>
+        </Card>
+        <Card C={C}>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 6 }}>Tipe</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: C.text, textTransform: "capitalize" }}>{wo.type}</div>
+        </Card>
+        <Card C={C}>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 6 }}>PIC</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{wo.assignee}</div>
+        </Card>
+      </div>
+      <Card C={C}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 14 }}>Detail & Keterkaitan</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+            <span style={{ color: C.textDim }}>Aset Terkait</span>
+            {asset ? <LinkButton C={C} onClick={() => onOpenAsset(asset.id)}>{asset.name} ({asset.id})</LinkButton> : <span>{wo.asset}</span>}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+            <span style={{ color: C.textDim }}>Sumber</span>
+            {linkedPm
+              ? <LinkButton C={C} icon={Link2} onClick={() => onOpenPm(linkedPm.id)}>Jadwal PM {linkedPm.id}</LinkButton>
+              : <span style={{ color: C.text }}>Dibuat manual</span>}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+            <span style={{ color: C.textDim }}>Dibuat</span>
+            <span style={{ color: C.text }}>{wo.created}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+            <span style={{ color: C.textDim }}>Mulai Dikerjakan</span>
+            <span style={{ color: C.text }}>{wo.startedAt || "—"}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0" }}>
+            <span style={{ color: C.textDim }}>Selesai</span>
+            <span style={{ color: C.text }}>{wo.completedAt || "Belum selesai"}</span>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
 
+/* ================== ROOT APP ================== */
 export default function CMMSDemo() {
   const [themeName, setThemeName] = useState("dark");
   const C = THEMES[themeName];
   const [tab, setTab] = useState("dashboard");
+
   const [assets, setAssets] = useState(seedAssets);
   const [workOrders, setWorkOrders] = useState(seedWorkOrders);
-  const [pms, setPms] = useState(seedPM);
+  const [pms, setPms] = useState(() => seedPM.map(p => ({ ...p, status: computeAutoPmStatus(p.due) })));
+  const [pmHistory, setPmHistory] = useState([]);
+
+  // Halaman detail yang sedang dibuka (null = tidak ada, tampilkan list biasa)
+  const [openAssetId, setOpenAssetId] = useState(null);
+  const [openWOId, setOpenWOId] = useState(null);
+
+  // ID counters — dibuat sekali via useMemo, counter murni naik terus,
+  // tidak pernah dihitung ulang dari isi array (itu penyebab bug lama).
+  const genWoId = useMemo(() => createIdCounter("WO", 42), []);
+  const genPmId = useMemo(() => createIdCounter("PM", 7), []);
+
+  const priorityFromPmStatus = (status) => status === "overdue" ? "high" : "medium";
+
+  /* -------------------------------------------------
+     NAVIGASI ANTAR HALAMAN DETAIL
+  ------------------------------------------------- */
+  const openAssetDetail = (id) => { setOpenAssetId(id); setOpenWOId(null); setTab("assets"); };
+  const openWODetail = (id) => { setOpenWOId(id); setOpenAssetId(null); setTab("wo"); };
+  const openPmFromAnywhere = (id) => { setTab("pm"); setOpenAssetId(null); setOpenWOId(null); };
+  const navigateTab = (t) => { setOpenAssetId(null); setOpenWOId(null); setTab(t); };
+
+  /* -------------------------------------------------
+     KORELASI: PM -> Work Order
+  ------------------------------------------------- */
+  const generateWOFromPM = (pm) => {
+    if (pm.linkedWO) return;
+    const stamp = nowStamp();
+    const newId = genWoId();
+    const newWO = {
+      id: newId,
+      asset: pm.asset,
+      title: `[PM ${pm.freq}] ${pm.task}`,
+      type: "preventive",
+      priority: priorityFromPmStatus(pm.status),
+      status: "open",
+      assignee: pm.pic && pm.pic !== "Belum ditentukan" ? pm.pic : "Unassigned",
+      created: stamp.split(" ")[0],
+      startedAt: stamp,
+      completedAt: "",
+      sourcePmId: pm.id,
+      cycleProcessed: false, assetImpactOpened: false, assetImpactCompleted: false,
+    };
+    setWorkOrders(prev => [newWO, ...prev]);
+    setPms(prev => prev.map(p => p.id === pm.id ? { ...p, linkedWO: newId } : p));
+  };
+
+  /* -------------------------------------------------
+     KORELASI: Work Order (korektif) -> status & health Asset
+     - WO korektif baru dibuat (prioritas tinggi/kritis) -> aset jadi Breakdown
+     - WO korektif diselesaikan -> aset kembali Beroperasi, health naik sedikit
+  ------------------------------------------------- */
+  const applyAssetImpact = (wo, phase) => {
+    if (wo.type !== "corrective") return;
+    setAssets(prev => prev.map(a => {
+      if (a.id !== wo.asset) return a;
+      if (phase === "opened") {
+        const shouldBreakdown = wo.priority === "critical" || wo.priority === "high";
+        return shouldBreakdown ? { ...a, status: "down" } : { ...a, status: "maintenance" };
+      }
+      if (phase === "completed") {
+        const boosted = Math.min(100, a.health + 8);
+        return { ...a, status: "running", health: boosted, lastMaint: todayStr() };
+      }
+      return a;
+    }));
+  };
+
+  /* -------------------------------------------------
+     STATUS PM OTOMATIS — dihitung ulang tiap hari berganti
+  ------------------------------------------------- */
+  useEffect(() => {
+    setPms(prev => {
+      let changed = false;
+      const next = prev.map(pm => {
+        const autoStatus = computeAutoPmStatus(pm.due);
+        if (autoStatus !== pm.status) { changed = true; return { ...pm, status: autoStatus }; }
+        return pm;
+      });
+      return changed ? next : prev;
+    });
+  }, [todayStr()]);
+
+  /* -------------------------------------------------
+     AUTO-GENERATE WO saat PM due_soon/overdue tanpa linkedWO
+  ------------------------------------------------- */
+  useEffect(() => {
+    pms.forEach(pm => {
+      if ((pm.status === "due_soon" || pm.status === "overdue") && !pm.linkedWO) {
+        generateWOFromPM(pm);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pms.map(p => `${p.id}:${p.status}:${p.linkedWO}`).join("|")]);
+
+  /* -------------------------------------------------
+     SIKLUS PM: saat WO bersumber dari PM selesai -> riwayat + siklus baru.
+     Setiap WO hanya diproses SEKALI (cycleProcessed) supaya tidak
+     menggeser siklus berulang-ulang setiap re-render (bug lama).
+  ------------------------------------------------- */
+  useEffect(() => {
+    const justCompleted = workOrders.filter(
+      w => w.sourcePmId && w.status === "completed" && !w.cycleProcessed
+    );
+    if (justCompleted.length === 0) return;
+
+    const processedPmIds = new Set();
+
+    justCompleted.forEach(wo => {
+      setWorkOrders(prev => prev.map(w => w.id === wo.id ? { ...w, cycleProcessed: true } : w));
+
+      const pm = pms.find(p => p.id === wo.sourcePmId);
+      if (!pm || processedPmIds.has(pm.id)) return;
+      processedPmIds.add(pm.id);
+
+      const completedDate = (wo.completedAt || todayStr()).split(" ")[0];
+      const nextDue = addDays(completedDate, freqToDays(pm.freq));
+
+      setPmHistory(prev => [
+        { ...pm, status: "completed", completedAt: wo.completedAt || completedDate, completedWO: wo.id },
+        ...prev,
+      ]);
+
+      setPms(prev => prev.map(p =>
+        p.id === pm.id
+          ? { ...p, due: nextDue, status: computeAutoPmStatus(nextDue), linkedWO: null }
+          : p
+      ));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workOrders.map(w => `${w.id}:${w.status}:${w.cycleProcessed}`).join("|")]);
+
+  /* -------------------------------------------------
+     KORELASI: WO korektif dibuka/diselesaikan -> dampak ke Asset.
+     Dipantau lewat perubahan status WO korektif, ditandai
+     assetImpactProcessed supaya tidak diterapkan berulang.
+  ------------------------------------------------- */
+  useEffect(() => {
+    const needsOpenImpact = workOrders.filter(
+      w => w.type === "corrective" && w.status !== "completed" && !w.assetImpactOpened
+    );
+    const needsCompleteImpact = workOrders.filter(
+      w => w.type === "corrective" && w.status === "completed" && !w.assetImpactCompleted
+    );
+    if (needsOpenImpact.length === 0 && needsCompleteImpact.length === 0) return;
+
+    needsOpenImpact.forEach(wo => {
+      applyAssetImpact(wo, "opened");
+      setWorkOrders(prev => prev.map(w => w.id === wo.id ? { ...w, assetImpactOpened: true } : w));
+    });
+    needsCompleteImpact.forEach(wo => {
+      applyAssetImpact(wo, "completed");
+      setWorkOrders(prev => prev.map(w => w.id === wo.id ? { ...w, assetImpactCompleted: true } : w));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workOrders.map(w => `${w.id}:${w.status}:${w.assetImpactOpened}:${w.assetImpactCompleted}`).join("|")]);
 
   const tabs = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "wo", label: "Work Order", icon: ClipboardList },
     { id: "assets", label: "Aset / Peralatan", icon: Boxes },
     { id: "pm", label: "Jadwal PM", icon: CalendarClock },
+    { id: "pmhistory", label: "Riwayat PM", icon: History },
     { id: "kpi", label: "KPI & Laporan", icon: Gauge },
   ];
+
+  const openAsset = openAssetId ? assets.find(a => a.id === openAssetId) : null;
+  const openWO = openWOId ? workOrders.find(w => w.id === openWOId) : null;
+  const openWOAsset = openWO ? assets.find(a => a.id === openWO.asset) : null;
+  const openWOLinkedPm = openWO?.sourcePmId ? pms.find(p => p.id === openWO.sourcePmId) : null;
 
   return (
     <div style={{
@@ -1098,13 +1592,13 @@ export default function CMMSDemo() {
             <Wrench size={18} color="#fff" />
           </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>WMCMMS</div>
-            <div style={{ fontSize: 10.5, color: C.textDim }}>WM Factory</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>FerroCMMS</div>
+            <div style={{ fontSize: 10.5, color: C.textDim }}>Demo — WM Training</div>
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
           {tabs.map(t => (
-            <NavItem C={C} key={t.id} icon={t.icon} label={t.label} active={tab === t.id} onClick={() => setTab(t.id)} />
+            <NavItem C={C} key={t.id} icon={t.icon} label={t.label} active={tab === t.id} onClick={() => navigateTab(t.id)} />
           ))}
         </div>
 
@@ -1123,7 +1617,7 @@ export default function CMMSDemo() {
 
         <div style={{ marginTop: "auto", padding: "12px 6px", borderTop: `1px solid ${C.border}` }}>
           <div style={{ fontSize: 11, color: C.textDim, lineHeight: 1.5 }}>
-            WM - Training<br />
+            Materi Training<br />
             <span style={{ color: C.steelLight }}>Maintenance of Machine Tools</span>
           </div>
         </div>
@@ -1131,10 +1625,36 @@ export default function CMMSDemo() {
 
       {/* Main content */}
       <div style={{ flex: 1, padding: 26, overflowY: "auto" }}>
-        {tab === "dashboard" && <Dashboard C={C} assets={assets} workOrders={workOrders} pms={pms} />}
-        {tab === "wo" && <WorkOrders C={C} workOrders={workOrders} setWorkOrders={setWorkOrders} assets={assets} />}
-        {tab === "assets" && <Assets C={C} assets={assets} setAssets={setAssets} />}
-        {tab === "pm" && <PMSchedule C={C} pms={pms} setPms={setPms} assets={assets} />}
+        {tab === "dashboard" && (
+          <Dashboard C={C} assets={assets} workOrders={workOrders} pms={pms}
+            onOpenAsset={openAssetDetail} onOpenWO={openWODetail} onNavigateTab={navigateTab} />
+        )}
+
+        {tab === "wo" && !openWO && (
+          <WorkOrders C={C} workOrders={workOrders} setWorkOrders={setWorkOrders} assets={assets} pms={pms}
+            genWoId={genWoId} onOpenAsset={openAssetDetail} onOpenPm={openPmFromAnywhere}
+            filterAssetId={null} onClearAssetFilter={() => {}} />
+        )}
+        {tab === "wo" && openWO && (
+          <WODetail wo={openWO} asset={openWOAsset} linkedPm={openWOLinkedPm} C={C}
+            onBack={() => setOpenWOId(null)} onOpenAsset={openAssetDetail} onOpenPm={openPmFromAnywhere} />
+        )}
+
+        {tab === "assets" && !openAsset && (
+          <Assets C={C} assets={assets} setAssets={setAssets} onOpenDetail={openAssetDetail} />
+        )}
+        {tab === "assets" && openAsset && (
+          <AssetDetail asset={openAsset} workOrders={workOrders} pms={pms} C={C}
+            onBack={() => setOpenAssetId(null)} onOpenWO={openWODetail} />
+        )}
+
+        {tab === "pm" && (
+          <PMSchedule C={C} pms={pms} setPms={setPms} assets={assets} onGenerateWO={generateWOFromPM}
+            onOpenAsset={openAssetDetail} onOpenWO={openWODetail} genPmId={genPmId} />
+        )}
+        {tab === "pmhistory" && (
+          <PMHistory C={C} history={pmHistory} onOpenAsset={openAssetDetail} onOpenWO={openWODetail} />
+        )}
         {tab === "kpi" && <KPIReport C={C} assets={assets} workOrders={workOrders} />}
       </div>
     </div>
