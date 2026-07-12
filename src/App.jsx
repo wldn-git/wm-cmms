@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Wrench, ClipboardList, Boxes, CalendarClock,
   AlertTriangle, CheckCircle2, Clock, Plus, X, ChevronRight,
   Search, Gauge, TrendingUp, TrendingDown, Factory, Sun, Moon,
-  Pencil, Save
+  Pencil, Save, Trash2
 } from "lucide-react";
 
 /* ---------------------------------------------------
@@ -490,15 +490,25 @@ function Assets({ assets, setAssets, C }) {
 }
 
 /* ---------------- PREVENTIVE MAINTENANCE ---------------- */
-function PMRow({ pm, C, onSave, assetIds }) {
+function PMRow({ pm, C, onSave, onDelete, assetIds }) {
   const { statusMeta } = getMeta(C);
   const tdStyle = getTdStyle(C);
   const inputStyle = getInputStyle(C);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(pm);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const startEdit = () => { setDraft(pm); setEditing(true); };
   const save = () => { onSave(draft); setEditing(false); };
+
+  const handleDeleteClick = () => {
+    if (confirmDelete) {
+      onDelete(pm.id);
+    } else {
+      setConfirmDelete(true);
+      setTimeout(() => setConfirmDelete(false), 3000);
+    }
+  };
 
   if (!editing) {
     return (
@@ -514,13 +524,27 @@ function PMRow({ pm, C, onSave, assetIds }) {
         </td>
         <td style={tdStyle}><Badge color={statusMeta[pm.status].color}>{statusMeta[pm.status].label}</Badge></td>
         <td style={tdStyle}>
-          <button onClick={startEdit} aria-label="Edit jadwal" style={{
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border}`,
-            background: "transparent", color: C.textDim, cursor: "pointer"
-          }}>
-            <Pencil size={13} />
-          </button>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={startEdit} aria-label="Edit jadwal" style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border}`,
+              background: "transparent", color: C.textDim, cursor: "pointer"
+            }}>
+              <Pencil size={13} />
+            </button>
+            <button onClick={handleDeleteClick} aria-label="Hapus jadwal" style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              gap: 4, height: 26, padding: confirmDelete ? "0 8px" : 0,
+              width: confirmDelete ? "auto" : 26, borderRadius: 6,
+              border: `1px solid ${confirmDelete ? C.danger : C.border}`,
+              background: confirmDelete ? C.danger + "1c" : "transparent",
+              color: confirmDelete ? C.danger : C.textDim, cursor: "pointer",
+              fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap"
+            }}>
+              <Trash2 size={13} />
+              {confirmDelete && "Yakin?"}
+            </button>
+          </div>
         </td>
       </tr>
     );
@@ -563,15 +587,82 @@ function PMRow({ pm, C, onSave, assetIds }) {
 
 function PMSchedule({ pms, setPms, assets, C }) {
   const thStyle = getThStyle(C);
+  const inputStyle = getInputStyle(C);
   const assetIds = assets.map(a => a.id);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    asset: assetIds[0], task: "", freq: "Bulanan", due: "", status: "upcoming"
+  });
 
   const savePm = (updated) => {
     setPms(pms.map(p => p.id === updated.id ? updated : p));
   };
 
+  const deletePm = (id) => {
+    setPms(pms.filter(p => p.id !== id));
+  };
+
+  const addPm = () => {
+    if (!form.task.trim() || !form.due) return;
+    const nums = pms
+      .map(p => parseInt(p.id.replace("PM-", ""), 10))
+      .filter(n => !isNaN(n));
+    const nextNum = (nums.length ? Math.max(...nums) : 0) + 1;
+    const newId = "PM-" + String(nextNum).padStart(2, "0");
+    setPms([...pms, { ...form, id: newId }]);
+    setForm({ asset: assetIds[0], task: "", freq: "Bulanan", due: "", status: "upcoming" });
+    setShowForm(false);
+  };
+
   return (
     <div>
-      <SectionHeader C={C} title="Preventive Maintenance Schedule" subtitle="Jadwal perawatan berkala — klik ikon pensil untuk mengubah" />
+      <SectionHeader
+        C={C}
+        title="Preventive Maintenance Schedule"
+        subtitle="Jadwal perawatan berkala — klik ikon pensil untuk mengubah, tempat sampah untuk hapus"
+        action={
+          <button onClick={() => setShowForm(!showForm)} style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "8px 14px",
+            background: C.ember, color: "#fff", border: "none", borderRadius: 8,
+            fontSize: 13, fontWeight: 600, cursor: "pointer"
+          }}>
+            <Plus size={15} /> Jadwal PM Baru
+          </button>
+        }
+      />
+
+      {showForm && (
+        <Card C={C} style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>Tambah Jadwal PM</div>
+            <X size={16} color={C.textDim} style={{ cursor: "pointer" }} onClick={() => setShowForm(false)} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 1fr", gap: 10 }}>
+            <select value={form.asset} onChange={e => setForm({ ...form, asset: e.target.value })} style={inputStyle}>
+              {assetIds.map(id => <option key={id} value={id}>{id}</option>)}
+            </select>
+            <input placeholder="Nama tugas maintenance..." value={form.task}
+              onChange={e => setForm({ ...form, task: e.target.value })}
+              style={{ ...inputStyle, width: "100%" }} />
+            <input placeholder="Frekuensi (mis. Bulanan)" value={form.freq}
+              onChange={e => setForm({ ...form, freq: e.target.value })}
+              style={inputStyle} />
+            <input type="date" value={form.due}
+              onChange={e => setForm({ ...form, due: e.target.value })}
+              style={inputStyle} />
+            <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={inputStyle}>
+              <option value="upcoming">Terjadwal</option>
+              <option value="due_soon">Segera Jatuh Tempo</option>
+              <option value="overdue">Terlambat</option>
+            </select>
+          </div>
+          <button onClick={addPm} style={{
+            marginTop: 12, padding: "8px 16px", background: C.ember, color: "#fff",
+            border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer"
+          }}>Simpan</button>
+        </Card>
+      )}
+
       <Card C={C} style={{ padding: 0, overflow: "hidden" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
@@ -583,8 +674,15 @@ function PMSchedule({ pms, setPms, assets, C }) {
           </thead>
           <tbody>
             {pms.map(p => (
-              <PMRow key={p.id} pm={p} C={C} onSave={savePm} assetIds={assetIds} />
+              <PMRow key={p.id} pm={p} C={C} onSave={savePm} onDelete={deletePm} assetIds={assetIds} />
             ))}
+            {pms.length === 0 && (
+              <tr>
+                <td colSpan={7} style={{ padding: "24px 14px", textAlign: "center", color: C.textDim, fontSize: 13 }}>
+                  Belum ada jadwal PM. Klik "Jadwal PM Baru" untuk menambahkan.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </Card>
