@@ -44,12 +44,20 @@ const seedAssets = [
 ];
 
 const seedWorkOrders = [
-  { id: "WO-2041", asset: "AST-103", title: "Belt tracking misalignment", type: "corrective", priority: "critical", status: "open", assignee: "Andi P.", created: "2026-07-10" },
-  { id: "WO-2040", asset: "AST-105", title: "Scheduled spindle inspection", type: "preventive", priority: "medium", status: "in_progress", assignee: "Budi S.", created: "2026-07-08" },
-  { id: "WO-2039", asset: "AST-102", title: "Hydraulic fluid replacement", type: "preventive", priority: "low", status: "in_progress", assignee: "Citra W.", created: "2026-07-07" },
-  { id: "WO-2038", asset: "AST-101", title: "Vibration anomaly check", type: "predictive", priority: "high", status: "open", assignee: "Unassigned", created: "2026-07-09" },
-  { id: "WO-2037", asset: "AST-104", title: "Monthly filter replacement", type: "preventive", priority: "low", status: "completed", assignee: "Andi P.", created: "2026-06-28" },
-  { id: "WO-2036", asset: "AST-106", title: "Quarterly water treatment check", type: "preventive", priority: "medium", status: "completed", assignee: "Dedi R.", created: "2026-06-25" },
+  { id: "WO-2041", asset: "AST-103", title: "Belt tracking misalignment", type: "corrective", priority: "critical", status: "open", assignee: "Andi P.", created: "2026-07-10", startedAt: "2026-07-10", completedAt: "" },
+  { id: "WO-2040", asset: "AST-105", title: "Scheduled spindle inspection", type: "preventive", priority: "medium", status: "in_progress", assignee: "Budi S.", created: "2026-07-08", startedAt: "2026-07-08", completedAt: "" },
+  { id: "WO-2039", asset: "AST-102", title: "Hydraulic fluid replacement", type: "preventive", priority: "low", status: "in_progress", assignee: "Citra W.", created: "2026-07-07", startedAt: "2026-07-07", completedAt: "" },
+  { id: "WO-2038", asset: "AST-101", title: "Vibration anomaly check", type: "predictive", priority: "high", status: "open", assignee: "Unassigned", created: "2026-07-09", startedAt: "2026-07-09", completedAt: "" },
+  { id: "WO-2037", asset: "AST-104", title: "Monthly filter replacement", type: "preventive", priority: "low", status: "completed", assignee: "Andi P.", created: "2026-06-28", startedAt: "2026-06-28", completedAt: "2026-06-28" },
+  { id: "WO-2036", asset: "AST-106", title: "Quarterly water treatment check", type: "preventive", priority: "medium", status: "completed", assignee: "Dedi R.", created: "2026-06-25", startedAt: "2026-06-25", completedAt: "2026-06-25" },
+  { id: "WO-2035", asset: "AST-103", title: "Conveyor motor overheating", type: "corrective", priority: "critical", status: "completed", assignee: "Andi P.", created: "2026-06-14", startedAt: "2026-06-14 08:00", completedAt: "2026-06-14 13:30" },
+  { id: "WO-2034", asset: "AST-102", title: "Hydraulic seal leak", type: "corrective", priority: "high", status: "completed", assignee: "Citra W.", created: "2026-06-02", startedAt: "2026-06-02 09:15", completedAt: "2026-06-02 12:45" },
+  { id: "WO-2033", asset: "AST-105", title: "Chuck jamming during operation", type: "corrective", priority: "high", status: "completed", assignee: "Budi S.", created: "2026-05-20", startedAt: "2026-05-20 07:30", completedAt: "2026-05-20 12:00" },
+  { id: "WO-2032", asset: "AST-103", title: "Belt tear — emergency stop", type: "corrective", priority: "critical", status: "completed", assignee: "Andi P.", created: "2026-05-08", startedAt: "2026-05-08 10:00", completedAt: "2026-05-08 16:15" },
+  { id: "WO-2031", asset: "AST-104", title: "Compressor pressure drop", type: "corrective", priority: "medium", status: "completed", assignee: "Dedi R.", created: "2026-04-22", startedAt: "2026-04-22 08:45", completedAt: "2026-04-22 11:20" },
+  { id: "WO-2030", asset: "AST-102", title: "Hydraulic pressure irregular", type: "corrective", priority: "high", status: "completed", assignee: "Citra W.", created: "2026-04-05", startedAt: "2026-04-05 09:00", completedAt: "2026-04-05 15:40" },
+  { id: "WO-2029", asset: "AST-103", title: "Roller bearing failure", type: "corrective", priority: "critical", status: "completed", assignee: "Andi P.", created: "2026-03-18", startedAt: "2026-03-18 07:00", completedAt: "2026-03-18 14:20" },
+  { id: "WO-2028", asset: "AST-101", title: "Spindle vibration excessive", type: "corrective", priority: "medium", status: "completed", assignee: "Budi S.", created: "2026-03-02", startedAt: "2026-03-02 09:30", completedAt: "2026-03-02 12:10" },
 ];
 
 const seedPM = [
@@ -110,6 +118,53 @@ function getMeta(C) {
     low:      { label: "Rendah", color: C.steel },
   };
   return { statusMeta, priorityMeta };
+}
+
+/* ---------------------------------------------------
+   KALKULASI MTTR & MTBF
+   MTTR = rata-rata (waktu selesai - waktu mulai) untuk
+          semua work order KOREKTIF yang sudah selesai.
+   MTBF = rata-rata jarak waktu antar kejadian breakdown
+          (work order korektif) berturut-turut, per aset,
+          lalu dirata-rata ke semua aset.
+--------------------------------------------------- */
+function calcMTTR(workOrders) {
+  const finished = workOrders.filter(
+    w => w.type === "corrective" && w.status === "completed" && w.startedAt && w.completedAt
+  );
+  if (finished.length === 0) return null;
+
+  const totalHours = finished.reduce((sum, w) => {
+    const start = new Date(w.startedAt.length > 10 ? w.startedAt : w.startedAt + " 00:00");
+    const end = new Date(w.completedAt.length > 10 ? w.completedAt : w.completedAt + " 00:00");
+    const hours = (end - start) / (1000 * 60 * 60);
+    return sum + Math.max(hours, 0);
+  }, 0);
+
+  return { value: totalHours / finished.length, sampleSize: finished.length };
+}
+
+function calcMTBF(workOrders) {
+  const corrective = workOrders.filter(w => w.type === "corrective" && w.status === "completed" && w.startedAt);
+
+  const byAsset = {};
+  corrective.forEach(w => {
+    if (!byAsset[w.asset]) byAsset[w.asset] = [];
+    byAsset[w.asset].push(new Date(w.startedAt.length > 10 ? w.startedAt : w.startedAt + " 00:00"));
+  });
+
+  const gaps = [];
+  Object.values(byAsset).forEach(dates => {
+    dates.sort((a, b) => a - b);
+    for (let i = 1; i < dates.length; i++) {
+      const hours = (dates[i] - dates[i - 1]) / (1000 * 60 * 60);
+      if (hours > 0) gaps.push(hours);
+    }
+  });
+
+  if (gaps.length === 0) return null;
+  const avgHours = gaps.reduce((s, h) => s + h, 0) / gaps.length;
+  return { value: avgHours, sampleSize: gaps.length };
 }
 
 function Badge({ color, children }) {
@@ -278,10 +333,17 @@ function WorkOrders({ workOrders, setWorkOrders, assets, C }) {
 
   const filtered = filter === "all" ? workOrders : workOrders.filter(w => w.status === filter);
 
+  const nowStamp = () => {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
   const addWO = () => {
     if (!form.title.trim()) return;
     const newId = "WO-" + (2042 + workOrders.filter(w => w.id.startsWith("WO-204")).length);
-    setWorkOrders([{ ...form, id: newId, status: "open", assignee: "Unassigned", created: "2026-07-11" }, ...workOrders]);
+    const stamp = nowStamp();
+    setWorkOrders([{ ...form, id: newId, status: "open", assignee: "Unassigned", created: stamp.split(" ")[0], startedAt: stamp, completedAt: "" }, ...workOrders]);
     setForm({ title: "", asset: assets[0].id, type: "corrective", priority: "medium" });
     setShowForm(false);
   };
@@ -290,7 +352,10 @@ function WorkOrders({ workOrders, setWorkOrders, assets, C }) {
     setWorkOrders(workOrders.map(w => {
       if (w.id !== id) return w;
       const next = w.status === "open" ? "in_progress" : w.status === "in_progress" ? "completed" : "completed";
-      return { ...w, status: next };
+      const patch = { status: next };
+      if (next === "completed" && !w.completedAt) patch.completedAt = nowStamp();
+      if (next === "in_progress" && !w.startedAt) patch.startedAt = nowStamp();
+      return { ...w, ...patch };
     }));
   };
 
@@ -866,14 +931,20 @@ function KPIReport({ assets, workOrders, C }) {
   const completed = workOrders.filter(w => w.status === "completed").length;
   const total = workOrders.length;
   const complianceRate = Math.round((completed / total) * 100);
-  const mttr = 4.2;
-  const mtbf = 186;
+  const mttrResult = calcMTTR(workOrders);
+  const mtbfResult = calcMTBF(workOrders);
+  const mttr = mttrResult ? mttrResult.value.toFixed(1) : "—";
+  const mtbfDisplay = mtbfResult
+    ? (mtbfResult.value >= 72
+        ? `${(mtbfResult.value / 24).toFixed(1)} hari`
+        : `${Math.round(mtbfResult.value)} jam`)
+    : null;
   const avgHealth = Math.round(assets.reduce((s, a) => s + a.health, 0) / assets.length);
 
   const kpis = [
     { label: "PM Compliance Rate", value: `${complianceRate}%`, trend: "up", icon: CheckCircle2, color: C.ok },
-    { label: "MTTR (Mean Time to Repair)", value: `${mttr} jam`, trend: "down", icon: Clock, color: C.warn },
-    { label: "MTBF (Mean Time Between Failure)", value: `${mtbf} jam`, trend: "up", icon: TrendingUp, color: C.ok },
+    { label: "MTTR (Mean Time to Repair)", value: mttrResult ? `${mttr} jam` : "Belum ada data", sub: mttrResult ? `dari ${mttrResult.sampleSize} WO korektif selesai` : null, trend: "down", icon: Clock, color: C.warn },
+    { label: "MTBF (Mean Time Between Failure)", value: mtbfDisplay || "Belum ada data", sub: mtbfResult ? `dari ${mtbfResult.sampleSize} jeda breakdown` : null, trend: "up", icon: TrendingUp, color: C.ok },
     { label: "Overall Equipment Health", value: `${avgHealth}%`, trend: "up", icon: Gauge, color: C.emberSoft },
   ];
 
@@ -900,6 +971,7 @@ function KPIReport({ assets, workOrders, C }) {
             </div>
             <div style={{ fontSize: 24, fontWeight: 700, color: C.text }}>{k.value}</div>
             <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>{k.label}</div>
+            {k.sub && <div style={{ fontSize: 10.5, color: C.textDim, marginTop: 2, opacity: 0.75 }}>{k.sub}</div>}
           </Card>
         ))}
       </div>
@@ -959,7 +1031,7 @@ function KPIReport({ assets, workOrders, C }) {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <Card C={C}>
             <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>Tren MTTR & MTBF</div>
-            <div style={{ fontSize: 12, color: C.textDim, marginBottom: 14 }}>MTTR turun & MTBF naik menandakan program maintenance yang membaik</div>
+            <div style={{ fontSize: 12, color: C.textDim, marginBottom: 14 }}>Ilustrasi tren 6 bulan — MTTR turun & MTBF naik menandakan program maintenance yang membaik</div>
             <ResponsiveContainer width="100%" height={240}>
               <LineChart data={reliabilityTrend} margin={{ top: 4, right: 12, left: -12, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
