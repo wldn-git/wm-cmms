@@ -164,7 +164,8 @@ function NavItem({ icon: Icon, label, active, onClick, C }) {
 function getInputStyle(C) {
   return {
     padding: "8px 12px", background: C.panel2, border: `1px solid ${C.border}`,
-    borderRadius: 7, color: C.text, fontSize: 13, outline: "none"
+    borderRadius: 7, color: C.text, fontSize: 13, outline: "none",
+    boxSizing: "border-box"
   };
 }
 function getThStyle(C) {
