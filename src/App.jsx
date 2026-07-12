@@ -5,6 +5,10 @@ import {
   Search, Gauge, TrendingUp, TrendingDown, Factory, Sun, Moon,
   Pencil, Save, Trash2
 } from "lucide-react";
+import {
+  LineChart, Line, BarChart, Bar, AreaChart, Area,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from "recharts";
 
 /* ---------------------------------------------------
    THEME: "Industrial Steel & Ember"
@@ -55,6 +59,36 @@ const seedPM = [
   { id: "PM-04", asset: "AST-104", task: "Penggantian filter udara", freq: "Bulanan", due: "2026-08-01", status: "upcoming" },
   { id: "PM-05", asset: "AST-105", task: "Kalibrasi tailstock & pemeriksaan chuck", freq: "3 Bulanan", due: "2026-07-18", status: "due_soon" },
   { id: "PM-06", asset: "AST-106", task: "Pemeriksaan kualitas air pendingin", freq: "3 Bulanan", due: "2026-08-10", status: "upcoming" },
+];
+
+/* ---------------------------------------------------
+   DATA HISTORIS 6 BULAN — untuk grafik tren di KPI & Laporan
+--------------------------------------------------- */
+const healthTrend = [
+  { bulan: "Feb", "AST-101": 97, "AST-102": 88, "AST-103": 72, rata2: 86 },
+  { bulan: "Mar", "AST-101": 96, "AST-102": 86, "AST-103": 65, rata2: 82 },
+  { bulan: "Apr", "AST-101": 95, "AST-102": 83, "AST-103": 58, rata2: 79 },
+  { bulan: "Mei", "AST-101": 94, "AST-102": 81, "AST-103": 47, rata2: 74 },
+  { bulan: "Jun", "AST-101": 93, "AST-102": 79, "AST-103": 40, rata2: 71 },
+  { bulan: "Jul", "AST-101": 92, "AST-102": 78, "AST-103": 34, rata2: 68 },
+];
+
+const reliabilityTrend = [
+  { bulan: "Feb", mttr: 6.8, mtbf: 132 },
+  { bulan: "Mar", mttr: 6.1, mtbf: 145 },
+  { bulan: "Apr", mttr: 5.5, mtbf: 158 },
+  { bulan: "Mei", mttr: 5.0, mtbf: 168 },
+  { bulan: "Jun", mttr: 4.6, mtbf: 176 },
+  { bulan: "Jul", mttr: 4.2, mtbf: 186 },
+];
+
+const woTrend = [
+  { bulan: "Feb", korektif: 14, preventif: 6 },
+  { bulan: "Mar", korektif: 12, preventif: 8 },
+  { bulan: "Apr", korektif: 10, preventif: 10 },
+  { bulan: "Mei", korektif: 8, preventif: 12 },
+  { bulan: "Jun", korektif: 6, preventif: 14 },
+  { bulan: "Jul", korektif: 5, preventif: 15 },
 ];
 
 function getMeta(C) {
@@ -870,7 +904,7 @@ function KPIReport({ assets, workOrders, C }) {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
         <Card C={C}>
           <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 14 }}>Distribusi Kritikalitas Aset</div>
           {byCriticality.map(b => (
@@ -901,6 +935,61 @@ function KPIReport({ assets, workOrders, C }) {
             );
           })}
         </Card>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <Card C={C}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>Tren Health Score per Aset (6 Bulan Terakhir)</div>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 14 }}>Menunjukkan pola degradasi kondisi aset — dasar untuk predictive maintenance</div>
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={healthTrend} margin={{ top: 4, right: 12, left: -12, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+              <XAxis dataKey="bulan" stroke={C.textDim} fontSize={12} tickLine={false} />
+              <YAxis stroke={C.textDim} fontSize={12} tickLine={false} domain={[0, 100]} />
+              <Tooltip contentStyle={{ background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, color: C.text }} />
+              <Legend wrapperStyle={{ fontSize: 12, color: C.textDim }} />
+              <Line type="monotone" dataKey="AST-101" stroke={C.ok} strokeWidth={2} dot={{ r: 3 }} name="CNC Milling #1" />
+              <Line type="monotone" dataKey="AST-102" stroke={C.warn} strokeWidth={2} dot={{ r: 3 }} name="Hydraulic Press #2" />
+              <Line type="monotone" dataKey="AST-103" stroke={C.danger} strokeWidth={2} dot={{ r: 3 }} name="Conveyor Belt Unit 4" />
+              <Line type="monotone" dataKey="rata2" stroke={C.steel} strokeWidth={2} strokeDasharray="4 3" dot={false} name="Rata-rata Semua Aset" />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+          <Card C={C}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>Tren MTTR & MTBF</div>
+            <div style={{ fontSize: 12, color: C.textDim, marginBottom: 14 }}>MTTR turun & MTBF naik menandakan program maintenance yang membaik</div>
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={reliabilityTrend} margin={{ top: 4, right: 12, left: -12, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                <XAxis dataKey="bulan" stroke={C.textDim} fontSize={12} tickLine={false} />
+                <YAxis yAxisId="left" stroke={C.warn} fontSize={12} tickLine={false} label={{ value: "Jam", angle: -90, position: "insideLeft", fontSize: 11, fill: C.textDim }} />
+                <YAxis yAxisId="right" orientation="right" stroke={C.ok} fontSize={12} tickLine={false} />
+                <Tooltip contentStyle={{ background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, color: C.text }} />
+                <Legend wrapperStyle={{ fontSize: 12, color: C.textDim }} />
+                <Line yAxisId="left" type="monotone" dataKey="mttr" stroke={C.warn} strokeWidth={2} dot={{ r: 3 }} name="MTTR (jam)" />
+                <Line yAxisId="right" type="monotone" dataKey="mtbf" stroke={C.ok} strokeWidth={2} dot={{ r: 3 }} name="MTBF (jam)" />
+              </LineChart>
+            </ResponsiveContainer>
+          </Card>
+
+          <Card C={C}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>Tren Work Order: Korektif vs Preventif</div>
+            <div style={{ fontSize: 12, color: C.textDim, marginBottom: 14 }}>Pergeseran dari reactive menuju proactive maintenance</div>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={woTrend} margin={{ top: 4, right: 12, left: -12, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                <XAxis dataKey="bulan" stroke={C.textDim} fontSize={12} tickLine={false} />
+                <YAxis stroke={C.textDim} fontSize={12} tickLine={false} />
+                <Tooltip contentStyle={{ background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12, color: C.text }} />
+                <Legend wrapperStyle={{ fontSize: 12, color: C.textDim }} />
+                <Bar dataKey="korektif" stackId="a" fill={C.danger} name="Korektif" radius={[0, 0, 0, 0]} />
+                <Bar dataKey="preventif" stackId="a" fill={C.ok} name="Preventif" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </div>
       </div>
     </div>
   );
