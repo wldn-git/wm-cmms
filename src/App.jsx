@@ -361,16 +361,15 @@ function WorkOrders({ workOrders, setWorkOrders, assets, C }) {
 }
 
 /* ---------------- ASSETS ---------------- */
-function AssetCard({ asset, C, onSave, onDelete }) {
+function AssetCard({ asset, C, onSave, onDelete, isEditing, onStartEdit, onStopEdit }) {
   const { statusMeta } = getMeta(C);
   const inputStyle = getInputStyle(C);
-  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(asset);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const startEdit = () => { setDraft(asset); setEditing(true); };
-  const save = () => { onSave({ ...draft, health: Number(draft.health) }); setEditing(false); };
-  const cancel = () => setEditing(false);
+  const startEdit = () => { setDraft(asset); onStartEdit(asset.id); };
+  const save = () => { onSave({ ...draft, health: Number(draft.health) }); onStopEdit(); };
+  const cancel = () => onStopEdit();
 
   const handleDeleteClick = () => {
     if (confirmDelete) {
@@ -381,7 +380,7 @@ function AssetCard({ asset, C, onSave, onDelete }) {
     }
   };
 
-  if (!editing) {
+  if (!isEditing) {
     return (
       <Card C={C}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
@@ -487,6 +486,7 @@ function Assets({ assets, setAssets, C }) {
   const inputStyle = getInputStyle(C);
   const [q, setQ] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({
     name: "", location: "", status: "running", criticality: "medium",
     health: 100, lastMaint: "", nextMaint: ""
@@ -501,6 +501,7 @@ function Assets({ assets, setAssets, C }) {
 
   const deleteAsset = (id) => {
     setAssets(assets.filter(a => a.id !== id));
+    if (editingId === id) setEditingId(null);
   };
 
   const addAsset = () => {
@@ -591,7 +592,16 @@ function Assets({ assets, setAssets, C }) {
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, alignItems: "start" }}>
         {filtered.map(a => (
-          <AssetCard key={a.id} asset={a} C={C} onSave={saveAsset} onDelete={deleteAsset} />
+          <AssetCard
+            key={a.id}
+            asset={a}
+            C={C}
+            onSave={saveAsset}
+            onDelete={deleteAsset}
+            isEditing={editingId === a.id}
+            onStartEdit={setEditingId}
+            onStopEdit={() => setEditingId(null)}
+          />
         ))}
         {filtered.length === 0 && (
           <div style={{ gridColumn: "1 / -1", padding: "24px 14px", textAlign: "center", color: C.textDim, fontSize: 13 }}>
@@ -604,16 +614,15 @@ function Assets({ assets, setAssets, C }) {
 }
 
 /* ---------------- PREVENTIVE MAINTENANCE ---------------- */
-function PMRow({ pm, C, onSave, onDelete, assetIds }) {
+function PMRow({ pm, C, onSave, onDelete, assetIds, isEditing, onStartEdit, onStopEdit }) {
   const { statusMeta } = getMeta(C);
   const tdStyle = getTdStyle(C);
   const inputStyle = getInputStyle(C);
-  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(pm);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const startEdit = () => { setDraft(pm); setEditing(true); };
-  const save = () => { onSave(draft); setEditing(false); };
+  const startEdit = () => { setDraft(pm); onStartEdit(pm.id); };
+  const save = () => { onSave(draft); onStopEdit(); };
 
   const handleDeleteClick = () => {
     if (confirmDelete) {
@@ -624,7 +633,7 @@ function PMRow({ pm, C, onSave, onDelete, assetIds }) {
     }
   };
 
-  if (!editing) {
+  if (!isEditing) {
     return (
       <tr style={{ borderTop: `1px solid ${C.border}` }}>
         <td style={tdStyle}><span style={{ color: C.textDim }}>{pm.id}</span></td>
@@ -704,6 +713,7 @@ function PMSchedule({ pms, setPms, assets, C }) {
   const inputStyle = getInputStyle(C);
   const assetIds = assets.map(a => a.id);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({
     asset: assetIds[0], task: "", freq: "Bulanan", due: "", status: "upcoming"
   });
@@ -714,6 +724,7 @@ function PMSchedule({ pms, setPms, assets, C }) {
 
   const deletePm = (id) => {
     setPms(pms.filter(p => p.id !== id));
+    if (editingId === id) setEditingId(null);
   };
 
   const addPm = () => {
@@ -788,7 +799,17 @@ function PMSchedule({ pms, setPms, assets, C }) {
           </thead>
           <tbody>
             {pms.map(p => (
-              <PMRow key={p.id} pm={p} C={C} onSave={savePm} onDelete={deletePm} assetIds={assetIds} />
+              <PMRow
+                key={p.id}
+                pm={p}
+                C={C}
+                onSave={savePm}
+                onDelete={deletePm}
+                assetIds={assetIds}
+                isEditing={editingId === p.id}
+                onStartEdit={setEditingId}
+                onStopEdit={() => setEditingId(null)}
+              />
             ))}
             {pms.length === 0 && (
               <tr>
