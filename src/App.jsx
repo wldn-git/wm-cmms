@@ -788,12 +788,11 @@ export default function CMMSDemo() {
 
   return (
     <div style={{
-      display: "flex", minHeight: 640, background: C.bg,
-      fontFamily: "'Inter', -apple-system, sans-serif", borderRadius: 12, overflow: "hidden",
-      border: `1px solid ${C.border}`
+      display: "flex", minHeight: "100vh", width: "100%", background: C.bg,
+      fontFamily: "'Inter', -apple-system, sans-serif"
     }}>
       {/* Sidebar */}
-      <div style={{ width: 224, background: C.panel, borderRight: `1px solid ${C.border}`, padding: "20px 14px", display: "flex", flexDirection: "column" }}>
+      <div style={{ width: 224, flexShrink: 0, background: C.panel, borderRight: `1px solid ${C.border}`, padding: "20px 14px", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 6px", marginBottom: 26 }}>
           <div style={{
             width: 34, height: 34, borderRadius: 8, background: C.ember,
