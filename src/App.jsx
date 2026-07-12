@@ -361,15 +361,25 @@ function WorkOrders({ workOrders, setWorkOrders, assets, C }) {
 }
 
 /* ---------------- ASSETS ---------------- */
-function AssetCard({ asset, C, onSave }) {
+function AssetCard({ asset, C, onSave, onDelete }) {
   const { statusMeta } = getMeta(C);
   const inputStyle = getInputStyle(C);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(asset);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const startEdit = () => { setDraft(asset); setEditing(true); };
   const save = () => { onSave({ ...draft, health: Number(draft.health) }); setEditing(false); };
   const cancel = () => setEditing(false);
+
+  const handleDeleteClick = () => {
+    if (confirmDelete) {
+      onDelete(asset.id);
+    } else {
+      setConfirmDelete(true);
+      setTimeout(() => setConfirmDelete(false), 3000);
+    }
+  };
 
   if (!editing) {
     return (
@@ -389,6 +399,18 @@ function AssetCard({ asset, C, onSave }) {
               background: "transparent", color: C.textDim, cursor: "pointer"
             }}>
               <Pencil size={13} />
+            </button>
+            <button onClick={handleDeleteClick} aria-label="Hapus aset" style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              gap: 4, height: 26, padding: confirmDelete ? "0 8px" : 0,
+              width: confirmDelete ? "auto" : 26, borderRadius: 6,
+              border: `1px solid ${confirmDelete ? C.danger : C.border}`,
+              background: confirmDelete ? C.danger + "1c" : "transparent",
+              color: confirmDelete ? C.danger : C.textDim, cursor: "pointer",
+              fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap"
+            }}>
+              <Trash2 size={13} />
+              {confirmDelete && "Yakin?"}
             </button>
           </div>
         </div>
@@ -444,7 +466,7 @@ function AssetCard({ asset, C, onSave }) {
           </div>
           <input type="range" min={0} max={100} value={draft.health}
             onChange={e => setDraft({ ...draft, health: e.target.value })}
-            style={{ width: "100%" }} />
+            style={{ width: "100%", accentColor: C.ember }} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <div>
@@ -464,6 +486,11 @@ function AssetCard({ asset, C, onSave }) {
 function Assets({ assets, setAssets, C }) {
   const inputStyle = getInputStyle(C);
   const [q, setQ] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    name: "", location: "", status: "running", criticality: "medium",
+    health: 100, lastMaint: "", nextMaint: ""
+  });
   const filtered = assets.filter(a =>
     a.name.toLowerCase().includes(q.toLowerCase()) || a.id.toLowerCase().includes(q.toLowerCase())
   );
@@ -472,18 +499,105 @@ function Assets({ assets, setAssets, C }) {
     setAssets(assets.map(a => a.id === updated.id ? updated : a));
   };
 
+  const deleteAsset = (id) => {
+    setAssets(assets.filter(a => a.id !== id));
+  };
+
+  const addAsset = () => {
+    if (!form.name.trim()) return;
+    const nums = assets
+      .map(a => parseInt(a.id.replace("AST-", ""), 10))
+      .filter(n => !isNaN(n));
+    const nextNum = (nums.length ? Math.max(...nums) : 100) + 1;
+    const newId = "AST-" + nextNum;
+    setAssets([...assets, { ...form, id: newId, health: Number(form.health) }]);
+    setForm({ name: "", location: "", status: "running", criticality: "medium", health: 100, lastMaint: "", nextMaint: "" });
+    setShowForm(false);
+  };
+
   return (
     <div>
-      <SectionHeader C={C} title="Asset / Equipment Registry" subtitle="Data induk mesin dan peralatan produksi — klik ikon pensil untuk mengubah" />
+      <SectionHeader
+        C={C}
+        title="Asset / Equipment Registry"
+        subtitle="Data induk mesin dan peralatan produksi — klik ikon pensil untuk mengubah, tempat sampah untuk hapus"
+        action={
+          <button onClick={() => setShowForm(!showForm)} style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "8px 14px",
+            background: C.ember, color: "#fff", border: "none", borderRadius: 8,
+            fontSize: 13, fontWeight: 600, cursor: "pointer"
+          }}>
+            <Plus size={15} /> Aset Baru
+          </button>
+        }
+      />
+
+      {showForm && (
+        <Card C={C} style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>Tambah Aset</div>
+            <X size={16} color={C.textDim} style={{ cursor: "pointer" }} onClick={() => setShowForm(false)} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input placeholder="Nama aset" value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })} style={inputStyle} />
+              <input placeholder="Lokasi" value={form.location}
+                onChange={e => setForm({ ...form, location: e.target.value })} style={inputStyle} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <select value={form.status} onChange={e => setForm({ ...form, status: e.target.value })} style={inputStyle}>
+                <option value="running">Beroperasi</option>
+                <option value="down">Breakdown</option>
+                <option value="maintenance">Maintenance</option>
+              </select>
+              <select value={form.criticality} onChange={e => setForm({ ...form, criticality: e.target.value })} style={inputStyle}>
+                <option value="high">Kritikalitas: Tinggi</option>
+                <option value="medium">Kritikalitas: Sedang</option>
+                <option value="low">Kritikalitas: Rendah</option>
+              </select>
+            </div>
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ fontSize: 12, color: C.textDim }}>Health score</span>
+                <span style={{ fontSize: 12, color: C.text, fontWeight: 600 }}>{form.health}%</span>
+              </div>
+              <input type="range" min={0} max={100} value={form.health}
+                onChange={e => setForm({ ...form, health: e.target.value })}
+                style={{ width: "100%", accentColor: C.ember }} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 11, color: C.textDim, marginBottom: 3 }}>Maint. terakhir</div>
+                <input type="date" value={form.lastMaint} onChange={e => setForm({ ...form, lastMaint: e.target.value })} style={{ ...inputStyle, width: "100%" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: C.textDim, marginBottom: 3 }}>Maint. berikutnya</div>
+                <input type="date" value={form.nextMaint} onChange={e => setForm({ ...form, nextMaint: e.target.value })} style={{ ...inputStyle, width: "100%" }} />
+              </div>
+            </div>
+          </div>
+          <button onClick={addAsset} style={{
+            marginTop: 12, padding: "8px 16px", background: C.ember, color: "#fff",
+            border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer"
+          }}>Simpan</button>
+        </Card>
+      )}
+
       <div style={{ position: "relative", marginBottom: 16, maxWidth: 320 }}>
         <Search size={15} color={C.textDim} style={{ position: "absolute", left: 12, top: 11 }} />
         <input placeholder="Cari aset..." value={q} onChange={e => setQ(e.target.value)}
           style={{ ...inputStyle, paddingLeft: 34, width: "100%" }} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, alignItems: "start" }}>
         {filtered.map(a => (
-          <AssetCard key={a.id} asset={a} C={C} onSave={saveAsset} />
+          <AssetCard key={a.id} asset={a} C={C} onSave={saveAsset} onDelete={deleteAsset} />
         ))}
+        {filtered.length === 0 && (
+          <div style={{ gridColumn: "1 / -1", padding: "24px 14px", textAlign: "center", color: C.textDim, fontSize: 13 }}>
+            Tidak ada aset yang cocok dengan pencarian.
+          </div>
+        )}
       </div>
     </div>
   );
