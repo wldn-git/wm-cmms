@@ -2291,8 +2291,8 @@ export default function CMMSDemo() {
             <Wrench size={18} color="#fff" />
           </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>FerroCMMS</div>
-            <div style={{ fontSize: 10.5, color: C.textDim }}>Demo — WM Training</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>WLDN-CMMS</div>
+            <div style={{ fontSize: 10.5, color: C.textDim }}>WM Training</div>
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
