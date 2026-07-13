@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Wrench, ClipboardList, Boxes, CalendarClock,
   AlertTriangle, CheckCircle2, Clock, Plus, X, ChevronRight, ChevronLeft,
   Search, Gauge, TrendingUp, TrendingDown, Factory, Sun, Moon,
-  Pencil, Save, Trash2, ArrowLeft, History, Link2
+  Pencil, Save, Trash2, ArrowLeft, History, Link2, ShieldAlert
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar,
@@ -85,6 +85,71 @@ const seedPM = [
   { id: "PM-2026-004", asset: "AST-104", task: "Penggantian filter udara", freq: "Bulanan", due: "2026-08-01", pic: "Dedi R.", linkedWO: null },
   { id: "PM-2026-005", asset: "AST-105", task: "Kalibrasi tailstock & pemeriksaan chuck", freq: "3 Bulanan", due: "2026-07-18", pic: "Budi S.", linkedWO: null },
   { id: "PM-2026-006", asset: "AST-106", task: "Pemeriksaan kualitas air pendingin", freq: "3 Bulanan", due: "2026-08-10", pic: "Dedi R.", linkedWO: null },
+];
+
+/* ---------------------------------------------------
+   FMEA — Failure Mode and Effects Analysis.
+   Skenario dipilih agar selaras dengan riwayat WO korektif
+   yang sudah ada di seedWorkOrders (mis. AST-103 sering
+   bermasalah di bagian belt — cocok dengan failure mode-nya).
+   RPN = Severity x Occurrence x Detection (skala 1-10).
+   linkedPmId: diisi kalau sudah dibuatkan jadwal PM mitigasi.
+--------------------------------------------------- */
+const seedFMEA = [
+  {
+    id: "FM-2026-001", asset: "AST-103",
+    component: "Belt & Roller Conveyor",
+    failureMode: "Belt bergeser / tidak center (misalignment)",
+    effect: "Material macet, line berhenti, berpotensi kerusakan roller",
+    cause: "Tension belt tidak terjaga, roller aus",
+    severity: 8, occurrence: 7, detection: 4,
+    linkedPmId: "PM-2026-003",
+  },
+  {
+    id: "FM-2026-002", asset: "AST-103",
+    component: "Motor Penggerak Conveyor",
+    failureMode: "Motor overheating",
+    effect: "Line berhenti total, motor berpotensi terbakar",
+    cause: "Beban berlebih, ventilasi motor tersumbat debu",
+    severity: 9, occurrence: 4, detection: 5,
+    linkedPmId: null,
+  },
+  {
+    id: "FM-2026-003", asset: "AST-102",
+    component: "Sistem Hidrolik",
+    failureMode: "Kebocoran seal hidrolik",
+    effect: "Tekanan turun, hasil pengepresan tidak presisi",
+    cause: "Seal aus karena usia pakai, kualitas oli menurun",
+    severity: 6, occurrence: 6, detection: 5,
+    linkedPmId: "PM-2026-002",
+  },
+  {
+    id: "FM-2026-004", asset: "AST-101",
+    component: "Spindle",
+    failureMode: "Vibrasi berlebih saat operasi",
+    effect: "Hasil machining tidak presisi, permukaan produk cacat",
+    cause: "Bearing spindle aus, ketidakseimbangan alat potong",
+    severity: 7, occurrence: 3, detection: 3,
+    linkedPmId: "PM-2026-001",
+  },
+  {
+    id: "FM-2026-005", asset: "AST-105",
+    component: "Chuck",
+    failureMode: "Chuck macet / tidak mencekam sempurna",
+    effect: "Benda kerja lepas saat operasi, risiko keselamatan",
+    cause: "Kotoran/serpihan menumpuk, pelumasan kurang",
+    severity: 9, occurrence: 3, detection: 6,
+    linkedPmId: "PM-2026-005",
+  },
+  {
+    id: "FM-2026-006", asset: "AST-104",
+    component: "Kompresor",
+    failureMode: "Tekanan udara turun drastis",
+    effect: "Alat pneumatik di line tidak berfungsi optimal",
+    cause: "Filter udara tersumbat, kebocoran pada pipa",
+    severity: 5, occurrence: 5, detection: 3,
+    linkedPmId: "PM-2026-004",
+  },
 ];
 
 /* ---------------------------------------------------
@@ -212,6 +277,65 @@ function nowStamp() {
 function todayStr() {
   return nowStamp().split(" ")[0];
 }
+
+/* ===================================================
+   FMEA — kalkulasi RPN (Risk Priority Number)
+=================================================== */
+function calcRPN(severity, occurrence, detection) {
+  return Number(severity) * Number(occurrence) * Number(detection);
+}
+
+// Kategori risiko berdasarkan RPN (skala umum 1-1000, S/O/D masing-masing 1-10)
+function rpnCategory(rpn, C) {
+  if (rpn >= 200) return { label: "Kritis", color: C.danger };
+  if (rpn >= 100) return { label: "Tinggi", color: C.emberSoft };
+  if (rpn >= 50) return { label: "Sedang", color: C.warn };
+  return { label: "Rendah", color: C.steel };
+}
+
+/* ===================================================
+   SKALA SOD — panduan penilaian Severity, Occurrence,
+   Detection (adaptasi standar AIAG, skala 1-10).
+   Dipakai sebagai referensi visual saat mengisi form FMEA
+   supaya peserta training paham dasar penilaiannya,
+   bukan sekadar menebak angka.
+=================================================== */
+const severityScale = [
+  { range: "9-10", label: "Berbahaya", desc: "Membahayakan keselamatan operator/pengguna, melanggar regulasi, tanpa peringatan" },
+  { range: "7-8",  label: "Sangat Tinggi", desc: "Line produksi berhenti total, produk tidak bisa dipakai sama sekali" },
+  { range: "5-6",  label: "Sedang", desc: "Sebagian fungsi terganggu, produk masih bisa dipakai dengan penurunan performa" },
+  { range: "3-4",  label: "Rendah", desc: "Gangguan ringan, hampir tidak terasa oleh operasi/pengguna" },
+  { range: "1-2",  label: "Minor", desc: "Tidak ada dampak nyata terhadap fungsi atau keselamatan" },
+];
+
+const occurrenceScale = [
+  { range: "9-10", label: "Sangat Sering", desc: "Hampir pasti terjadi — lebih dari sekali per minggu" },
+  { range: "7-8",  label: "Sering", desc: "Terjadi berulang — sekitar sekali per bulan" },
+  { range: "5-6",  label: "Cukup Sering", desc: "Terjadi sesekali — beberapa kali per tahun" },
+  { range: "3-4",  label: "Jarang", desc: "Pernah terjadi — sekali dalam 1-2 tahun" },
+  { range: "1-2",  label: "Sangat Jarang", desc: "Hampir tidak pernah terjadi dalam riwayat operasi" },
+];
+
+const detectionScale = [
+  { range: "9-10", label: "Hampir Tidak Terdeteksi", desc: "Tidak ada metode deteksi, gagal tanpa tanda sama sekali" },
+  { range: "7-8",  label: "Sulit Terdeteksi", desc: "Deteksi hanya lewat inspeksi manual sesekali, mudah terlewat" },
+  { range: "5-6",  label: "Cukup Terdeteksi", desc: "Ada metode deteksi (visual/manual check rutin), tapi tidak selalu konsisten" },
+  { range: "3-4",  label: "Mudah Terdeteksi", desc: "Ada sensor/indikator otomatis, terdeteksi sebelum berdampak besar" },
+  { range: "1-2",  label: "Hampir Pasti Terdeteksi", desc: "Sistem deteksi otomatis andal, gagal langsung terlihat sebelum menyebar" },
+];
+
+// Menerjemahkan nilai 1-10 yang diinput jadi label kualitatif dari tabel skala,
+// supaya peserta training langsung lihat makna angkanya secara real-time.
+function scaleLabelFor(scale, value) {
+  const n = Number(value);
+  if (isNaN(n)) return "";
+  for (const s of scale) {
+    const [lo, hi] = s.range.split("-").map(Number);
+    if (n >= lo && n <= hi) return `${n} — ${s.label}`;
+  }
+  return "";
+}
+
 function Badge({ color, children }) {
   return (
     <span style={{
@@ -309,17 +433,86 @@ function NavItem({ icon: Icon, label, active, onClick, C }) {
 // Tombol berupa teks yang berperilaku seperti link, dipakai untuk
 // membuat ID/nama entitas (aset, WO, PM) bisa diklik untuk navigasi
 // ke halaman detail terkait — inti dari "korelasi antar menu".
+// Underline hanya muncul saat hover, supaya tabel/list tidak ramai visual.
 function LinkButton({ children, onClick, C, icon: Icon }) {
+  const [hover, setHover] = useState(false);
   return (
-    <button onClick={onClick} style={{
-      display: "inline-flex", alignItems: "center", gap: 4,
-      background: "transparent", border: "none", padding: 0,
-      color: C.emberSoft, fontSize: "inherit", fontWeight: 600,
-      cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 2
-    }}>
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 4,
+        background: "transparent", border: "none", padding: 0,
+        color: C.emberSoft, fontSize: "inherit", fontWeight: 600,
+        cursor: "pointer",
+        textDecoration: hover ? "underline" : "none",
+        textUnderlineOffset: 2,
+        transition: "color 0.12s"
+      }}
+    >
       {Icon && <Icon size={12} />}
       {children}
     </button>
+  );
+}
+
+/* ===================================================
+   PANDUAN SKALA SOD — tabel referensi ringkas untuk
+   membantu peserta training memahami cara menilai
+   Severity, Occurrence, dan Detection saat mengisi FMEA.
+=================================================== */
+function ScaleGuideTable({ title, scale, C }) {
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text, marginBottom: 6 }}>{title}</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {scale.map(s => (
+          <div key={s.range} style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+            <span style={{
+              minWidth: 34, textAlign: "center", fontSize: 11, fontWeight: 700,
+              color: C.emberSoft, background: C.ember + "18", borderRadius: 5, padding: "1px 4px"
+            }}>{s.range}</span>
+            <div>
+              <span style={{ fontSize: 12, fontWeight: 600, color: C.text }}>{s.label}</span>
+              <span style={{ fontSize: 11.5, color: C.textDim }}> — {s.desc}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SODScaleGuide({ C }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: 6 }}>
+      <button onClick={() => setOpen(!open)} style={{
+        display: "flex", alignItems: "center", gap: 6, padding: "6px 10px",
+        background: "transparent", border: `1px solid ${C.border}`, borderRadius: 7,
+        color: C.emberSoft, fontSize: 12, fontWeight: 600, cursor: "pointer"
+      }}>
+        <ShieldAlert size={13} />
+        {open ? "Sembunyikan panduan skala S-O-D" : "Lihat panduan skala S-O-D (Severity, Occurrence, Detection)"}
+      </button>
+      {open && (
+        <div style={{
+          marginTop: 10, padding: 14, borderRadius: 8,
+          background: C.panel2, border: `1px solid ${C.border}`
+        }}>
+          <div style={{ fontSize: 11.5, color: C.textDim, marginBottom: 12, lineHeight: 1.5 }}>
+            Setiap faktor dinilai pada skala <b style={{ color: C.text }}>1 (terbaik) sampai 10 (terburuk)</b>.
+            RPN = Severity × Occurrence × Detection — semakin tinggi RPN, semakin prioritas untuk dimitigasi.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+            <ScaleGuideTable title="Severity (Keparahan Dampak)" scale={severityScale} C={C} />
+            <ScaleGuideTable title="Occurrence (Frekuensi Kejadian)" scale={occurrenceScale} C={C} />
+            <ScaleGuideTable title="Detection (Kemudahan Deteksi)" scale={detectionScale} C={C} />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -579,12 +772,16 @@ function WorkOrders({ workOrders, setWorkOrders, assets, pms, C, genWoId, onOpen
   );
 }
 /* ================== ASSET DETAIL PAGE ================== */
-function AssetDetail({ asset, workOrders, pms, C, onBack, onOpenWO }) {
+function AssetDetail({ asset, workOrders, pms, fmea, C, onBack, onOpenWO, onOpenFmeaTab }) {
   const { statusMeta, priorityMeta } = getMeta(C);
   const relatedWO = workOrders.filter(w => w.asset === asset.id).sort((a, b) => (a.created < b.created ? 1 : -1));
   const relatedPM = pms.filter(p => p.asset === asset.id);
+  const relatedFmea = fmea.filter(f => f.asset === asset.id);
   const correctiveCount = relatedWO.filter(w => w.type === "corrective").length;
   const openCount = relatedWO.filter(w => w.status !== "completed").length;
+  const highestRpn = relatedFmea.length > 0
+    ? Math.max(...relatedFmea.map(f => calcRPN(f.severity, f.occurrence, f.detection)))
+    : null;
 
   return (
     <div>
@@ -609,7 +806,7 @@ function AssetDetail({ asset, workOrders, pms, C, onBack, onOpenWO }) {
         </Card>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 14 }}>
         <Card C={C}>
           <div style={{ fontSize: 12, color: C.textDim, marginBottom: 4 }}>Kritikalitas</div>
           <div style={{ fontSize: 14, color: C.text, fontWeight: 600, textTransform: "capitalize" }}>{asset.criticality}</div>
@@ -618,9 +815,19 @@ function AssetDetail({ asset, workOrders, pms, C, onBack, onOpenWO }) {
           <div style={{ fontSize: 12, color: C.textDim, marginBottom: 4 }}>Jadwal PM Terkait</div>
           <div style={{ fontSize: 14, color: C.text, fontWeight: 600 }}>{relatedPM.length} jadwal aktif</div>
         </Card>
+        <Card C={C}>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 4 }}>Risiko FMEA Tertinggi</div>
+          {highestRpn !== null ? (
+            <LinkButton C={C} icon={ShieldAlert} onClick={onOpenFmeaTab}>
+              RPN {highestRpn} — {rpnCategory(highestRpn, C).label} ({relatedFmea.length} failure mode)
+            </LinkButton>
+          ) : (
+            <div style={{ fontSize: 13, color: C.textDim }}>Belum ada analisis FMEA</div>
+          )}
+        </Card>
       </div>
 
-      <Card C={C} style={{ padding: 0, overflow: "hidden" }}>
+      <Card C={C} style={{ padding: 0, overflow: "hidden", marginBottom: 14 }}>
         <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.text }}>
           Riwayat Work Order — {asset.name}
         </div>
@@ -650,6 +857,47 @@ function AssetDetail({ asset, workOrders, pms, C, onBack, onOpenWO }) {
               <tr>
                 <td colSpan={7} style={{ padding: "24px 14px", textAlign: "center", color: C.textDim, fontSize: 13 }}>
                   Belum ada riwayat Work Order untuk aset ini.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+
+      <Card C={C} style={{ padding: 0, overflow: "hidden" }}>
+        <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.text }}>
+          Analisis FMEA — {asset.name}
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: C.panel2 }}>
+              {["Komponen", "Failure Mode", "Effect", "RPN"].map(h => (
+                <th key={h} style={getThStyle(C)}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {relatedFmea.map(f => {
+              const rpn = calcRPN(f.severity, f.occurrence, f.detection);
+              const cat = rpnCategory(rpn, C);
+              return (
+                <tr key={f.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                  <td style={{ ...getTdStyle(C), color: C.text, fontWeight: 500 }}>{f.component}</td>
+                  <td style={getTdStyle(C)}>{f.failureMode}</td>
+                  <td style={getTdStyle(C)}>{f.effect}</td>
+                  <td style={getTdStyle(C)}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontWeight: 700, color: cat.color }}>{rpn}</span>
+                      <Badge color={cat.color}>{cat.label}</Badge>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {relatedFmea.length === 0 && (
+              <tr>
+                <td colSpan={4} style={{ padding: "24px 14px", textAlign: "center", color: C.textDim, fontSize: 13 }}>
+                  Belum ada analisis FMEA untuk aset ini.
                 </td>
               </tr>
             )}
@@ -1344,6 +1592,322 @@ function KPIReport({ assets, workOrders, C }) {
   );
 }
 /* ================== WO DETAIL PAGE ================== */
+/* ================== FMEA ================== */
+function FMEARow({ fm, C, onSave, onDelete, assetIds, isEditing, onStartEdit, onStopEdit, onOpenAsset, onOpenPm, onGeneratePM, pms }) {
+  const tdStyle = getTdStyle(C);
+  const inputStyle = getInputStyle(C);
+  const [draft, setDraft] = useState(fm);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const startEdit = () => { setDraft(fm); onStartEdit(fm.id); };
+  const save = () => {
+    onSave({
+      ...draft,
+      severity: Number(draft.severity), occurrence: Number(draft.occurrence), detection: Number(draft.detection)
+    });
+    onStopEdit();
+  };
+
+  const handleDeleteClick = () => {
+    if (confirmDelete) {
+      onDelete(fm.id);
+    } else {
+      setConfirmDelete(true);
+      setTimeout(() => setConfirmDelete(false), 3000);
+    }
+  };
+
+  const rpn = calcRPN(fm.severity, fm.occurrence, fm.detection);
+  const cat = rpnCategory(rpn, C);
+  const hasPmAlready = !!fm.linkedPmId;
+  const pmExists = fm.linkedPmId ? pms.some(p => p.id === fm.linkedPmId) : false;
+
+  if (!isEditing) {
+    return (
+      <tr style={{ borderTop: `1px solid ${C.border}` }}>
+        <td style={tdStyle}><span style={{ color: C.textDim }}>{fm.id}</span></td>
+        <td style={tdStyle}><LinkButton C={C} onClick={() => onOpenAsset(fm.asset)}>{fm.asset}</LinkButton></td>
+        <td style={{ ...tdStyle, color: C.text, fontWeight: 500 }}>{fm.component}</td>
+        <td style={tdStyle}>{fm.failureMode}</td>
+        <td style={tdStyle}>{fm.effect}</td>
+        <td style={{ ...tdStyle, textAlign: "center" }}>{fm.severity}</td>
+        <td style={{ ...tdStyle, textAlign: "center" }}>{fm.occurrence}</td>
+        <td style={{ ...tdStyle, textAlign: "center" }}>{fm.detection}</td>
+        <td style={tdStyle}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontWeight: 700, color: cat.color, fontSize: 14 }}>{rpn}</span>
+            <Badge color={cat.color}>{cat.label}</Badge>
+          </div>
+        </td>
+        <td style={tdStyle}>
+          {hasPmAlready && pmExists ? (
+            <LinkButton C={C} icon={CalendarClock} onClick={() => onOpenPm(fm.linkedPmId)}>{fm.linkedPmId}</LinkButton>
+          ) : (
+            <button onClick={() => onGeneratePM(fm)} style={{
+              display: "flex", alignItems: "center", gap: 4, padding: "5px 9px",
+              background: "transparent", border: `1px solid ${C.border}`, borderRadius: 6,
+              color: C.textDim, fontSize: 11.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap"
+            }}>
+              <Plus size={12} /> Buat PM
+            </button>
+          )}
+        </td>
+        <td style={tdStyle}>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={startEdit} aria-label="Edit FMEA" style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border}`,
+              background: "transparent", color: C.textDim, cursor: "pointer"
+            }}>
+              <Pencil size={13} />
+            </button>
+            <button onClick={handleDeleteClick} aria-label="Hapus FMEA" style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              gap: 4, height: 26, padding: confirmDelete ? "0 8px" : 0,
+              width: confirmDelete ? "auto" : 26, borderRadius: 6,
+              border: `1px solid ${confirmDelete ? C.danger : C.border}`,
+              background: confirmDelete ? C.danger + "1c" : "transparent",
+              color: confirmDelete ? C.danger : C.textDim, cursor: "pointer",
+              fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap"
+            }}>
+              <Trash2 size={13} />
+              {confirmDelete && "Yakin?"}
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr style={{ borderTop: `1px solid ${C.border}`, background: C.panel2 }}>
+      <td style={tdStyle}><span style={{ color: C.textDim }}>{fm.id}</span></td>
+      <td style={tdStyle}>
+        <select value={draft.asset} onChange={e => setDraft({ ...draft, asset: e.target.value })} style={inputStyle}>
+          {assetIds.map(id => <option key={id} value={id}>{id}</option>)}
+        </select>
+      </td>
+      <td style={tdStyle}>
+        <input value={draft.component} onChange={e => setDraft({ ...draft, component: e.target.value })} style={{ ...inputStyle, width: "100%" }} />
+      </td>
+      <td style={tdStyle}>
+        <input value={draft.failureMode} onChange={e => setDraft({ ...draft, failureMode: e.target.value })} style={{ ...inputStyle, width: "100%" }} />
+      </td>
+      <td style={tdStyle}>
+        <input value={draft.effect} onChange={e => setDraft({ ...draft, effect: e.target.value })} style={{ ...inputStyle, width: "100%" }} />
+      </td>
+      <td style={tdStyle}>
+        <input type="number" min={1} max={10} value={draft.severity} onChange={e => setDraft({ ...draft, severity: e.target.value })}
+          title="Severity 1-10: seberapa parah dampaknya jika kegagalan terjadi. 1-2=minor, 9-10=berbahaya/melanggar keselamatan."
+          style={{ ...inputStyle, width: 50, textAlign: "center" }} />
+      </td>
+      <td style={tdStyle}>
+        <input type="number" min={1} max={10} value={draft.occurrence} onChange={e => setDraft({ ...draft, occurrence: e.target.value })}
+          title="Occurrence 1-10: seberapa sering kegagalan ini terjadi. 1-2=hampir tidak pernah, 9-10=sangat sering (>1x/minggu)."
+          style={{ ...inputStyle, width: 50, textAlign: "center" }} />
+      </td>
+      <td style={tdStyle}>
+        <input type="number" min={1} max={10} value={draft.detection} onChange={e => setDraft({ ...draft, detection: e.target.value })}
+          title="Detection 1-10: seberapa mudah kegagalan ini terdeteksi sebelum berdampak. 1-2=hampir pasti terdeteksi otomatis, 9-10=hampir tidak terdeteksi."
+          style={{ ...inputStyle, width: 50, textAlign: "center" }} />
+      </td>
+      <td style={tdStyle}>
+        <span style={{ fontWeight: 700, color: rpnCategory(calcRPN(draft.severity, draft.occurrence, draft.detection), C).color }}>
+          {calcRPN(draft.severity, draft.occurrence, draft.detection)}
+        </span>
+      </td>
+      <td style={tdStyle}>{fm.linkedPmId || "—"}</td>
+      <td style={tdStyle}>
+        <button onClick={save} aria-label="Simpan" style={{
+          display: "flex", alignItems: "center", gap: 4, padding: "5px 9px",
+          background: C.ember, color: "#fff", border: "none", borderRadius: 6,
+          fontSize: 12, fontWeight: 600, cursor: "pointer"
+        }}><Save size={12} /> Simpan</button>
+      </td>
+    </tr>
+  );
+}
+
+function FMEA({ fmea, setFmea, assets, pms, C, onOpenAsset, onOpenPm, onGeneratePM, genFmId }) {
+  const thStyle = getThStyle(C);
+  const inputStyle = getInputStyle(C);
+  const assetIds = assets.map(a => a.id);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [sortByRpn, setSortByRpn] = useState(true);
+  const [form, setForm] = useState({
+    asset: assetIds[0] || "", component: "", failureMode: "", effect: "", cause: "",
+    severity: 5, occurrence: 5, detection: 5
+  });
+
+  const saveFm = (updated) => {
+    setFmea(prev => prev.map(f => f.id === updated.id ? updated : f));
+  };
+
+  const deleteFm = (id) => {
+    setFmea(prev => prev.filter(f => f.id !== id));
+    if (editingId === id) setEditingId(null);
+  };
+
+  const addFm = () => {
+    if (!form.component.trim() || !form.failureMode.trim()) return;
+    const newId = genFmId();
+    setFmea(prev => [...prev, {
+      ...form, id: newId,
+      severity: Number(form.severity), occurrence: Number(form.occurrence), detection: Number(form.detection),
+      linkedPmId: null,
+    }]);
+    setForm({ asset: assetIds[0] || "", component: "", failureMode: "", effect: "", cause: "", severity: 5, occurrence: 5, detection: 5 });
+    setShowForm(false);
+  };
+
+  const displayedFmea = sortByRpn
+    ? [...fmea].sort((a, b) => calcRPN(b.severity, b.occurrence, b.detection) - calcRPN(a.severity, a.occurrence, a.detection))
+    : fmea;
+
+  const criticalCount = fmea.filter(f => calcRPN(f.severity, f.occurrence, f.detection) >= 200).length;
+  const highCount = fmea.filter(f => {
+    const r = calcRPN(f.severity, f.occurrence, f.detection);
+    return r >= 100 && r < 200;
+  }).length;
+
+  return (
+    <div>
+      <SectionHeader
+        C={C}
+        title="FMEA — Failure Mode and Effects Analysis"
+        subtitle="Analisis risiko kegagalan per komponen aset — RPN tinggi berarti prioritas mitigasi tinggi"
+        action={
+          <button onClick={() => setShowForm(!showForm)} style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "8px 14px",
+            background: C.ember, color: "#fff", border: "none", borderRadius: 8,
+            fontSize: 13, fontWeight: 600, cursor: "pointer"
+          }}>
+            <Plus size={15} /> Analisis FMEA Baru
+          </button>
+        }
+      />
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 18 }}>
+        <StatCard C={C} icon={ShieldAlert} label="Risiko Kritis (RPN ≥ 200)" value={criticalCount} accent={C.danger} />
+        <StatCard C={C} icon={AlertTriangle} label="Risiko Tinggi (RPN 100-199)" value={highCount} accent={C.emberSoft} />
+        <StatCard C={C} icon={ClipboardList} label="Total Failure Mode Teridentifikasi" value={fmea.length} accent={C.steel} />
+      </div>
+
+      {showForm && (
+        <Card C={C} style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>Tambah Analisis FMEA</div>
+            <X size={16} color={C.textDim} style={{ cursor: "pointer" }} onClick={() => setShowForm(false)} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: 8 }}>
+              <select value={form.asset} onChange={e => setForm({ ...form, asset: e.target.value })} style={inputStyle}>
+                {assetIds.map(id => <option key={id} value={id}>{id}</option>)}
+              </select>
+              <input placeholder="Komponen (mis. Belt & Roller Conveyor)" value={form.component}
+                onChange={e => setForm({ ...form, component: e.target.value })} style={inputStyle} />
+            </div>
+            <input placeholder="Failure Mode — cara komponen ini bisa gagal" value={form.failureMode}
+              onChange={e => setForm({ ...form, failureMode: e.target.value })} style={inputStyle} />
+            <input placeholder="Effect — dampak jika kegagalan terjadi" value={form.effect}
+              onChange={e => setForm({ ...form, effect: e.target.value })} style={inputStyle} />
+            <input placeholder="Cause — kemungkinan penyebab" value={form.cause}
+              onChange={e => setForm({ ...form, cause: e.target.value })} style={inputStyle} />
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 4 }}>
+              <div>
+                <div style={{ fontSize: 11, color: C.textDim, marginBottom: 4 }}>Severity — Keparahan (1-10)</div>
+                <input type="number" min={1} max={10} value={form.severity} onChange={e => setForm({ ...form, severity: e.target.value })} style={{ ...inputStyle, width: "100%" }} />
+                <div style={{ fontSize: 10.5, color: C.emberSoft, marginTop: 3, fontWeight: 600 }}>
+                  {scaleLabelFor(severityScale, form.severity)}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: C.textDim, marginBottom: 4 }}>Occurrence — Frekuensi (1-10)</div>
+                <input type="number" min={1} max={10} value={form.occurrence} onChange={e => setForm({ ...form, occurrence: e.target.value })} style={{ ...inputStyle, width: "100%" }} />
+                <div style={{ fontSize: 10.5, color: C.emberSoft, marginTop: 3, fontWeight: 600 }}>
+                  {scaleLabelFor(occurrenceScale, form.occurrence)}
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: C.textDim, marginBottom: 4 }}>Detection — Deteksi (1-10)</div>
+                <input type="number" min={1} max={10} value={form.detection} onChange={e => setForm({ ...form, detection: e.target.value })} style={{ ...inputStyle, width: "100%" }} />
+                <div style={{ fontSize: 10.5, color: C.emberSoft, marginTop: 3, fontWeight: 600 }}>
+                  {scaleLabelFor(detectionScale, form.detection)}
+                </div>
+              </div>
+            </div>
+            <SODScaleGuide C={C} />
+            <div style={{ fontSize: 12, color: C.textDim, marginTop: 10 }}>
+              RPN akan dihitung otomatis: <b style={{ color: C.text }}>{calcRPN(form.severity, form.occurrence, form.detection)}</b>
+              {" "}({rpnCategory(calcRPN(form.severity, form.occurrence, form.detection), C).label})
+            </div>
+          </div>
+          <button onClick={addFm} style={{
+            marginTop: 12, padding: "8px 16px", background: C.ember, color: "#fff",
+            border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer"
+          }}>Simpan</button>
+        </Card>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+        <button onClick={() => setSortByRpn(!sortByRpn)} style={{
+          display: "flex", alignItems: "center", gap: 6, padding: "6px 12px",
+          background: "transparent", border: `1px solid ${C.border}`, borderRadius: 8,
+          color: C.textDim, fontSize: 12, fontWeight: 600, cursor: "pointer"
+        }}>
+          {sortByRpn ? "Diurutkan: RPN Tertinggi" : "Diurutkan: Sesuai Input"}
+        </button>
+      </div>
+
+      <Card C={C} style={{ padding: 0, overflow: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 1100 }}>
+          <thead>
+            <tr style={{ background: C.panel2 }}>
+              {[
+                { h: "ID" }, { h: "Aset" }, { h: "Komponen" }, { h: "Failure Mode" }, { h: "Effect" },
+                { h: "S", title: "Severity — keparahan dampak (1-10)" },
+                { h: "O", title: "Occurrence — frekuensi kejadian (1-10)" },
+                { h: "D", title: "Detection — kemudahan deteksi (1-10)" },
+                { h: "RPN", title: "Risk Priority Number = S x O x D" },
+                { h: "PM Mitigasi" }, { h: "" },
+              ].map(col => (
+                <th key={col.h} title={col.title} style={{ ...thStyle, cursor: col.title ? "help" : "default" }}>{col.h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {displayedFmea.map(fm => (
+              <FMEARow
+                key={fm.id}
+                fm={fm}
+                C={C}
+                onSave={saveFm}
+                onDelete={deleteFm}
+                assetIds={assetIds}
+                isEditing={editingId === fm.id}
+                onStartEdit={setEditingId}
+                onStopEdit={() => setEditingId(null)}
+                onOpenAsset={onOpenAsset}
+                onOpenPm={onOpenPm}
+                onGeneratePM={onGeneratePM}
+                pms={pms}
+              />
+            ))}
+            {displayedFmea.length === 0 && (
+              <tr>
+                <td colSpan={11} style={{ padding: "24px 14px", textAlign: "center", color: C.textDim, fontSize: 13 }}>
+                  Belum ada analisis FMEA. Klik "Analisis FMEA Baru" untuk menambahkan.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
 function WODetail({ wo, asset, linkedPm, C, onBack, onOpenAsset, onOpenPm }) {
   const { statusMeta, priorityMeta } = getMeta(C);
   return (
@@ -1408,6 +1972,7 @@ export default function CMMSDemo() {
   const [workOrders, setWorkOrders] = useState(seedWorkOrders);
   const [pms, setPms] = useState(() => seedPM.map(p => ({ ...p, status: computeAutoPmStatus(p.due) })));
   const [pmHistory, setPmHistory] = useState([]);
+  const [fmea, setFmea] = useState(seedFMEA);
 
   // Halaman detail yang sedang dibuka (null = tidak ada, tampilkan list biasa)
   const [openAssetId, setOpenAssetId] = useState(null);
@@ -1417,6 +1982,7 @@ export default function CMMSDemo() {
   // tidak pernah dihitung ulang dari isi array (itu penyebab bug lama).
   const genWoId = useMemo(() => createIdCounter("WO", 42), []);
   const genPmId = useMemo(() => createIdCounter("PM", 7), []);
+  const genFmId = useMemo(() => createIdCounter("FM", 7), []);
 
   const priorityFromPmStatus = (status) => status === "overdue" ? "high" : "medium";
 
@@ -1451,6 +2017,29 @@ export default function CMMSDemo() {
     };
     setWorkOrders(prev => [newWO, ...prev]);
     setPms(prev => prev.map(p => p.id === pm.id ? { ...p, linkedWO: newId } : p));
+  };
+
+  /* -------------------------------------------------
+     KORELASI: FMEA -> Jadwal PM (mitigasi risiko)
+     Membuat jadwal PM baru dari suatu failure mode, lalu
+     menandai entri FMEA itu sebagai sudah punya PM mitigasi.
+  ------------------------------------------------- */
+  const generatePMFromFMEA = (fm) => {
+    if (fm.linkedPmId) return;
+    const newPmId = genPmId();
+    const due = addDays(todayStr(), 14); // default: mitigasi dijadwalkan 2 minggu dari sekarang
+    const newPM = {
+      id: newPmId,
+      asset: fm.asset,
+      task: `[Mitigasi FMEA ${fm.id}] Inspeksi ${fm.component} — cegah: ${fm.failureMode}`,
+      freq: "Bulanan",
+      due,
+      pic: "Belum ditentukan",
+      linkedWO: null,
+      status: computeAutoPmStatus(due),
+    };
+    setPms(prev => [...prev, newPM]);
+    setFmea(prev => prev.map(f => f.id === fm.id ? { ...f, linkedPmId: newPmId } : f));
   };
 
   /* -------------------------------------------------
@@ -1569,6 +2158,7 @@ export default function CMMSDemo() {
     { id: "assets", label: "Aset / Peralatan", icon: Boxes },
     { id: "pm", label: "Jadwal PM", icon: CalendarClock },
     { id: "pmhistory", label: "Riwayat PM", icon: History },
+    { id: "fmea", label: "FMEA", icon: ShieldAlert },
     { id: "kpi", label: "KPI & Laporan", icon: Gauge },
   ];
 
@@ -1592,8 +2182,8 @@ export default function CMMSDemo() {
             <Wrench size={18} color="#fff" />
           </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>FerroCMMS</div>
-            <div style={{ fontSize: 10.5, color: C.textDim }}>Demo — WM Training</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>WLDN-CMMS</div>
+            <div style={{ fontSize: 10.5, color: C.textDim }}>WM Training</div>
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
@@ -1644,8 +2234,9 @@ export default function CMMSDemo() {
           <Assets C={C} assets={assets} setAssets={setAssets} onOpenDetail={openAssetDetail} />
         )}
         {tab === "assets" && openAsset && (
-          <AssetDetail asset={openAsset} workOrders={workOrders} pms={pms} C={C}
-            onBack={() => setOpenAssetId(null)} onOpenWO={openWODetail} />
+          <AssetDetail asset={openAsset} workOrders={workOrders} pms={pms} fmea={fmea} C={C}
+            onBack={() => setOpenAssetId(null)} onOpenWO={openWODetail}
+            onOpenFmeaTab={() => navigateTab("fmea")} />
         )}
 
         {tab === "pm" && (
@@ -1654,6 +2245,11 @@ export default function CMMSDemo() {
         )}
         {tab === "pmhistory" && (
           <PMHistory C={C} history={pmHistory} onOpenAsset={openAssetDetail} onOpenWO={openWODetail} />
+        )}
+        {tab === "fmea" && (
+          <FMEA C={C} fmea={fmea} setFmea={setFmea} assets={assets} pms={pms}
+            onOpenAsset={openAssetDetail} onOpenPm={openPmFromAnywhere}
+            onGeneratePM={generatePMFromFMEA} genFmId={genFmId} />
         )}
         {tab === "kpi" && <KPIReport C={C} assets={assets} workOrders={workOrders} />}
       </div>
