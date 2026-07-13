@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Wrench, ClipboardList, Boxes, CalendarClock,
   AlertTriangle, CheckCircle2, Clock, Plus, X, ChevronRight, ChevronLeft,
   Search, Gauge, TrendingUp, TrendingDown, Factory, Sun, Moon,
-  Pencil, Save, Trash2, ArrowLeft, History, Link2, ShieldAlert
+  Pencil, Save, Trash2, ArrowLeft, History, Link2, ShieldAlert, HelpCircle
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar,
@@ -454,6 +454,96 @@ function LinkButton({ children, onClick, C, icon: Icon }) {
       {Icon && <Icon size={12} />}
       {children}
     </button>
+  );
+}
+
+/* ===================================================
+   PENJELASAN KONSEP FMEA — modal popup berisi pemaparan
+   dasar FMEA, RPN, dan istilah-istilah terkait untuk
+   peserta training yang baru mengenal metode ini.
+=================================================== */
+const fmeaGlossary = [
+  { term: "FMEA", def: "Failure Mode and Effects Analysis — metode sistematis untuk mengidentifikasi cara suatu komponen bisa gagal (failure mode), dampaknya (effect), dan penyebabnya (cause), sebelum kegagalan itu benar-benar terjadi." },
+  { term: "Failure Mode", def: "Cara spesifik suatu komponen gagal menjalankan fungsinya. Contoh: \"belt bergeser dari jalurnya\", bukan sekadar \"belt rusak\"." },
+  { term: "Effect", def: "Dampak yang dirasakan jika failure mode itu terjadi — bisa ke proses produksi, kualitas produk, atau keselamatan operator." },
+  { term: "Cause", def: "Akar penyebab yang memicu failure mode terjadi. Satu failure mode bisa punya lebih dari satu penyebab." },
+  { term: "Severity (S)", def: "Seberapa parah dampak (effect) yang ditimbulkan, dinilai 1 (nyaris tidak berdampak) sampai 10 (membahayakan keselamatan)." },
+  { term: "Occurrence (O)", def: "Seberapa sering failure mode ini diperkirakan/pernah terjadi, dinilai 1 (sangat jarang) sampai 10 (sangat sering)." },
+  { term: "Detection (D)", def: "Seberapa besar kemungkinan failure mode ini terdeteksi SEBELUM berdampak besar, dinilai 1 (hampir pasti terdeteksi lebih dulu) sampai 10 (hampir mustahil terdeteksi lebih dulu). Catatan: semakin SULIT dideteksi, semakin TINGGI angkanya." },
+  { term: "RPN", def: "Risk Priority Number = Severity x Occurrence x Detection. Rentang teoretis 1-1000. Semakin tinggi RPN, semakin prioritas untuk segera dimitigasi." },
+  { term: "Mitigasi", def: "Tindakan pencegahan yang diambil untuk menurunkan risiko — di aplikasi ini direpresentasikan dengan membuat Jadwal PM yang menyasar failure mode tersebut." },
+];
+
+function FMEAInfoModal({ C, onClose }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        zIndex: 1000, padding: 20
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12,
+          maxWidth: 640, width: "100%", maxHeight: "85vh", overflowY: "auto",
+          padding: 24, boxShadow: "0 20px 60px rgba(0,0,0,0.4)"
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: 8, background: C.ember + "20",
+              display: "flex", alignItems: "center", justifyContent: "center"
+            }}>
+              <ShieldAlert size={18} color={C.emberSoft} />
+            </div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>Apa itu FMEA?</div>
+          </div>
+          <button onClick={onClose} style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 28, height: 28, borderRadius: 7, border: `1px solid ${C.border}`,
+            background: "transparent", color: C.textDim, cursor: "pointer", flexShrink: 0
+          }}>
+            <X size={15} />
+          </button>
+        </div>
+
+        <p style={{ fontSize: 13, color: C.textDim, lineHeight: 1.6, margin: "10px 0 18px" }}>
+          FMEA adalah pendekatan <b style={{ color: C.text }}>risk-based maintenance</b> — alih-alih menunggu
+          kerusakan terjadi (reactive) atau merawat berdasarkan jadwal tetap saja (preventive), FMEA membantu
+          tim maintenance mengidentifikasi <b style={{ color: C.text }}>risiko kegagalan mana yang paling perlu
+          diprioritaskan</b> berdasarkan keparahan, frekuensi, dan kemudahan deteksinya.
+        </p>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {fmeaGlossary.map(g => (
+            <div key={g.term} style={{ paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: C.emberSoft, marginBottom: 3 }}>{g.term}</div>
+              <div style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.55 }}>{g.def}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{
+          marginTop: 16, padding: 12, borderRadius: 8,
+          background: C.panel2, border: `1px solid ${C.border}`
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 4 }}>Contoh sederhana</div>
+          <div style={{ fontSize: 12, color: C.textDim, lineHeight: 1.6 }}>
+            Belt conveyor bisa <b style={{ color: C.text }}>bergeser dari jalurnya</b> (failure mode).
+            Dampaknya, <b style={{ color: C.text }}>line berhenti dan berpotensi merusak roller</b> (effect) — Severity 8.
+            Ini <b style={{ color: C.text }}>sering terjadi</b>, sekitar sekali per bulan (occurrence) — Occurrence 7.
+            Deteksinya <b style={{ color: C.text }}>cukup sulit</b> karena hanya lewat inspeksi visual sesekali (detection) — Detection 4.
+            <br /><br />
+            RPN = 8 × 7 × 4 = <b style={{ color: C.danger }}>224</b> → kategori <b style={{ color: C.danger }}>Kritis</b>,
+            sehingga perlu segera dibuatkan jadwal PM pencegahan.
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1735,6 +1825,7 @@ function FMEA({ fmea, setFmea, assets, pms, C, onOpenAsset, onOpenPm, onGenerate
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [sortByRpn, setSortByRpn] = useState(true);
+  const [showInfo, setShowInfo] = useState(false);
   const [form, setForm] = useState({
     asset: assetIds[0] || "", component: "", failureMode: "", effect: "", cause: "",
     severity: 5, occurrence: 5, detection: 5
@@ -1775,7 +1866,23 @@ function FMEA({ fmea, setFmea, assets, pms, C, onOpenAsset, onOpenPm, onGenerate
     <div>
       <SectionHeader
         C={C}
-        title="FMEA — Failure Mode and Effects Analysis"
+        title={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            FMEA — Failure Mode and Effects Analysis
+            <button
+              onClick={() => setShowInfo(true)}
+              aria-label="Penjelasan FMEA"
+              title="Apa itu FMEA?"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 22, height: 22, borderRadius: "50%", border: `1px solid ${C.border}`,
+                background: "transparent", color: C.textDim, cursor: "pointer", flexShrink: 0
+              }}
+            >
+              <HelpCircle size={13} />
+            </button>
+          </span>
+        }
         subtitle="Analisis risiko kegagalan per komponen aset — RPN tinggi berarti prioritas mitigasi tinggi"
         action={
           <button onClick={() => setShowForm(!showForm)} style={{
@@ -1787,6 +1894,8 @@ function FMEA({ fmea, setFmea, assets, pms, C, onOpenAsset, onOpenPm, onGenerate
           </button>
         }
       />
+
+      {showInfo && <FMEAInfoModal C={C} onClose={() => setShowInfo(false)} />}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 18 }}>
         <StatCard C={C} icon={ShieldAlert} label="Risiko Kritis (RPN ≥ 200)" value={criticalCount} accent={C.danger} />
@@ -2182,8 +2291,8 @@ export default function CMMSDemo() {
             <Wrench size={18} color="#fff" />
           </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>WLDN-CMMS</div>
-            <div style={{ fontSize: 10.5, color: C.textDim }}>WM Training</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>FerroCMMS</div>
+            <div style={{ fontSize: 10.5, color: C.textDim }}>Demo — WM Training</div>
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
