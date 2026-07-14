@@ -586,6 +586,141 @@ function AboutModal({ C, onClose }) {
 }
 
 /* ===================================================
+   PENJELASAN MTTR & MTBF — modal popup dengan ilustrasi
+   garis waktu sederhana, supaya peserta training langsung
+   paham maknanya tanpa perlu menghafal rumus dulu.
+=================================================== */
+function MTTRMTBFTimeline({ C }) {
+  // Ilustrasi: Beroperasi -> Rusak -> Diperbaiki (MTTR) -> Beroperasi lagi (MTBF) -> Rusak lagi
+  const W = 560, H = 120;
+  const segments = [
+    { x: 10,  w: 150, color: C.ok,     label: "Beroperasi" },
+    { x: 160, w: 60,   color: C.danger, label: "MTTR" },
+    { x: 220, w: 240, color: C.ok,     label: "Beroperasi (MTBF)" },
+    { x: 460, w: 60,   color: C.danger, label: "MTTR" },
+  ];
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: "block" }}>
+      {/* garis dasar waktu */}
+      <line x1={10} y1={60} x2={W - 10} y2={60} stroke={C.border} strokeWidth={2} />
+      {segments.map((s, i) => (
+        <g key={i}>
+          <rect x={s.x} y={48} width={s.w} height={24} rx={5} fill={s.color} opacity={0.85} />
+          <text x={s.x + s.w / 2} y={40} textAnchor="middle" fontSize="10.5" fontWeight="700" fill={C.text}>
+            {s.label}
+          </text>
+        </g>
+      ))}
+      {/* penanda kejadian breakdown */}
+      <circle cx={160} cy={60} r={4} fill={C.danger} />
+      <text x={160} y={90} textAnchor="middle" fontSize="10" fill={C.textDim}>Breakdown #1</text>
+      <circle cx={460} cy={60} r={4} fill={C.danger} />
+      <text x={460} y={90} textAnchor="middle" fontSize="10" fill={C.textDim}>Breakdown #2</text>
+
+      <text x={190} y={112} textAnchor="middle" fontSize="10.5" fontWeight="700" fill={C.danger}>
+        ← MTTR: waktu perbaikan →
+      </text>
+      <text x={340} y={112} textAnchor="middle" fontSize="10.5" fontWeight="700" fill={C.ok}>
+        ← MTBF: jarak antar breakdown →
+      </text>
+    </svg>
+  );
+}
+
+function MTTRMTBFInfoModal({ C, onClose }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        zIndex: 1000, padding: 20
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12,
+          maxWidth: 640, width: "100%", maxHeight: "85vh", overflowY: "auto",
+          padding: 24, boxShadow: "0 20px 60px rgba(0,0,0,0.4)"
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: 8, background: C.ember + "20",
+              display: "flex", alignItems: "center", justifyContent: "center"
+            }}>
+              <Gauge size={18} color={C.emberSoft} />
+            </div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>Apa itu MTTR & MTBF?</div>
+          </div>
+          <button onClick={onClose} style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 28, height: 28, borderRadius: 7, border: `1px solid ${C.border}`,
+            background: "transparent", color: C.textDim, cursor: "pointer", flexShrink: 0
+          }}>
+            <X size={15} />
+          </button>
+        </div>
+
+        <p style={{ fontSize: 13, color: C.textDim, lineHeight: 1.6, margin: "10px 0 16px" }}>
+          Keduanya adalah indikator standar untuk mengukur <b style={{ color: C.text }}>keandalan</b> (reliability)
+          dan <b style={{ color: C.text }}>kecepatan respons</b> tim maintenance. Cara termudah memahaminya:
+          bayangkan garis waktu operasi sebuah mesin di bawah ini.
+        </p>
+
+        <div style={{
+          padding: "14px 8px", borderRadius: 8, background: C.panel2,
+          border: `1px solid ${C.border}`, marginBottom: 18
+        }}>
+          <MTTRMTBFTimeline C={C} />
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ paddingBottom: 12, borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.warn, marginBottom: 4 }}>
+              MTTR — Mean Time To Repair
+            </div>
+            <div style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.6 }}>
+              <b style={{ color: C.text }}>"Begitu mesin rusak, rata-rata berapa lama sampai kembali normal?"</b>
+              <br />
+              Dihitung dari rata-rata (waktu selesai − waktu mulai dikerjakan) pada seluruh Work Order
+              korektif yang sudah selesai. <b style={{ color: C.ok }}>Semakin kecil, semakin baik</b> — artinya
+              tim maintenance makin cekatan menangani kerusakan.
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.ok, marginBottom: 4 }}>
+              MTBF — Mean Time Between Failure
+            </div>
+            <div style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.6 }}>
+              <b style={{ color: C.text }}>"Rata-rata mesin bisa beroperasi berapa lama sebelum rusak lagi?"</b>
+              <br />
+              Dihitung dari rata-rata jarak waktu antar kejadian breakdown yang berurutan pada satu aset.
+              <b style={{ color: C.ok }}> Semakin besar, semakin baik</b> — artinya mesin makin andal dan
+              jarang mengalami kegagalan mendadak.
+            </div>
+          </div>
+        </div>
+
+        <div style={{
+          marginTop: 16, padding: 12, borderRadius: 8,
+          background: C.panel2, border: `1px solid ${C.border}`
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 4 }}>Cara membacanya bersamaan</div>
+          <div style={{ fontSize: 12, color: C.textDim, lineHeight: 1.6 }}>
+            <b style={{ color: C.text }}>MTTR turun + MTBF naik</b> = program maintenance yang membaik: kerusakan
+            makin jarang terjadi (MTBF naik), dan ketika toh terjadi, penanganannya makin cepat (MTTR turun).
+            Ini pola yang ingin dicapai lewat penerapan preventive maintenance dan FMEA secara konsisten.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================
    PENJELASAN KONSEP FMEA — modal popup berisi pemaparan
    dasar FMEA, RPN, dan istilah-istilah terkait untuk
    peserta training yang baru mengenal metode ini.
@@ -1671,6 +1806,7 @@ function PMHistory({ history, C, onOpenAsset, onOpenWO }) {
 /* ================== KPI / REPORTING ================== */
 function KPIReport({ assets, workOrders, C }) {
   const { statusMeta } = getMeta(C);
+  const [showMttrInfo, setShowMttrInfo] = useState(false);
   const completed = workOrders.filter(w => w.status === "completed").length;
   const total = workOrders.length;
   const complianceRate = total > 0 ? Math.round((completed / total) * 100) : 0;
@@ -1686,8 +1822,8 @@ function KPIReport({ assets, workOrders, C }) {
 
   const kpis = [
     { label: "PM Compliance Rate", value: `${complianceRate}%`, trend: "up", icon: CheckCircle2, color: C.ok },
-    { label: "MTTR (Mean Time to Repair)", value: mttrResult ? `${mttr} jam` : "Belum ada data", sub: mttrResult ? `dari ${mttrResult.sampleSize} WO korektif selesai` : null, trend: "down", icon: Clock, color: C.warn },
-    { label: "MTBF (Mean Time Between Failure)", value: mtbfDisplay || "Belum ada data", sub: mtbfResult ? `dari ${mtbfResult.sampleSize} jeda breakdown` : null, trend: "up", icon: TrendingUp, color: C.ok },
+    { label: "MTTR (Mean Time to Repair)", value: mttrResult ? `${mttr} jam` : "Belum ada data", sub: mttrResult ? `dari ${mttrResult.sampleSize} WO korektif selesai` : null, trend: "down", icon: Clock, color: C.warn, showInfo: true },
+    { label: "MTBF (Mean Time Between Failure)", value: mtbfDisplay || "Belum ada data", sub: mtbfResult ? `dari ${mtbfResult.sampleSize} jeda breakdown` : null, trend: "up", icon: TrendingUp, color: C.ok, showInfo: true },
     { label: "Overall Equipment Health", value: `${avgHealth}%`, trend: "up", icon: Gauge, color: C.emberSoft },
   ];
 
@@ -1698,6 +1834,7 @@ function KPIReport({ assets, workOrders, C }) {
   return (
     <div>
       <SectionHeader C={C} title="Dashboard & Reporting KPI" subtitle="Indikator kinerja utama aktivitas maintenance" />
+      {showMttrInfo && <MTTRMTBFInfoModal C={C} onClose={() => setShowMttrInfo(false)} />}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 20 }}>
         {kpis.map(k => (
           <Card C={C} key={k.label}>
@@ -1713,7 +1850,23 @@ function KPIReport({ assets, workOrders, C }) {
                 : <TrendingDown size={15} color={C.danger} />}
             </div>
             <div style={{ fontSize: 24, fontWeight: 700, color: C.text }}>{k.value}</div>
-            <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>{k.label}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4 }}>
+              <div style={{ fontSize: 12, color: C.textDim }}>{k.label}</div>
+              {k.showInfo && (
+                <button
+                  onClick={() => setShowMttrInfo(true)}
+                  aria-label="Penjelasan MTTR & MTBF"
+                  title="Apa itu MTTR & MTBF?"
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 16, height: 16, borderRadius: "50%", border: `1px solid ${C.border}`,
+                    background: "transparent", color: C.textDim, cursor: "pointer", flexShrink: 0, padding: 0
+                  }}
+                >
+                  <HelpCircle size={10} />
+                </button>
+              )}
+            </div>
             {k.sub && <div style={{ fontSize: 10.5, color: C.textDim, marginTop: 2, opacity: 0.75 }}>{k.sub}</div>}
           </Card>
         ))}
