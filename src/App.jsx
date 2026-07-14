@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Wrench, ClipboardList, Boxes, CalendarClock,
   AlertTriangle, CheckCircle2, Clock, Plus, X, ChevronRight, ChevronLeft,
   Search, Gauge, TrendingUp, TrendingDown, Factory, Sun, Moon,
-  Pencil, Save, Trash2, ArrowLeft, History, Link2, ShieldAlert, HelpCircle
+  Pencil, Save, Trash2, ArrowLeft, History, Link2, ShieldAlert, HelpCircle, Info
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar,
@@ -454,6 +454,134 @@ function LinkButton({ children, onClick, C, icon: Icon }) {
       {Icon && <Icon size={12} />}
       {children}
     </button>
+  );
+}
+
+/* ===================================================
+   TENTANG APLIKASI — pengantar konsep CMMS secara umum
+   dan konteks materi training, ditampilkan lewat tombol
+   "Tentang" di sidebar bawah.
+=================================================== */
+const cmmsPillars = [
+  {
+    icon: ClipboardList,
+    title: "Work Order Management",
+    desc: "Mencatat, menugaskan, dan melacak setiap pekerjaan maintenance — baik yang sifatnya korektif (perbaikan setelah rusak), preventif (terjadwal), maupun prediktif (berdasarkan kondisi)."
+  },
+  {
+    icon: Boxes,
+    title: "Asset Registry",
+    desc: "Basis data induk seluruh mesin dan peralatan — lokasi, status, tingkat kritikalitas, dan kondisi kesehatannya (health score)."
+  },
+  {
+    icon: CalendarClock,
+    title: "Preventive Maintenance",
+    desc: "Jadwal perawatan berkala supaya kerusakan dicegah sebelum terjadi, bukan ditangani setelah mesin berhenti beroperasi."
+  },
+  {
+    icon: ShieldAlert,
+    title: "FMEA (Risk Analysis)",
+    desc: "Pendekatan berbasis risiko — mengidentifikasi cara suatu komponen bisa gagal, lalu memprioritaskan mitigasi berdasarkan tingkat risikonya (RPN)."
+  },
+  {
+    icon: Gauge,
+    title: "KPI & Reporting",
+    desc: "Indikator kinerja seperti MTTR, MTBF, dan PM Compliance Rate untuk mengukur efektivitas program maintenance dari waktu ke waktu."
+  },
+];
+
+function AboutModal({ C, onClose }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        zIndex: 1000, padding: 20
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12,
+          maxWidth: 640, width: "100%", maxHeight: "85vh", overflowY: "auto",
+          padding: 24, boxShadow: "0 20px 60px rgba(0,0,0,0.4)"
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: 8, background: C.ember,
+              display: "flex", alignItems: "center", justifyContent: "center"
+            }}>
+              <Wrench size={18} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>Tentang WLDN-CMMS</div>
+              <div style={{ fontSize: 11.5, color: C.textDim }}>Materi Training — Maintenance of Machine Tools</div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 28, height: 28, borderRadius: 7, border: `1px solid ${C.border}`,
+            background: "transparent", color: C.textDim, cursor: "pointer", flexShrink: 0
+          }}>
+            <X size={15} />
+          </button>
+        </div>
+
+        <p style={{ fontSize: 13, color: C.textDim, lineHeight: 1.6, margin: "14px 0 6px" }}>
+          <b style={{ color: C.text }}>CMMS (Computerized Maintenance Management System)</b> adalah
+          perangkat lunak yang membantu tim maintenance mengelola seluruh siklus perawatan aset —
+          mulai dari pencatatan aset, penjadwalan perawatan, penugasan pekerjaan, hingga pelaporan
+          kinerja — secara terpusat dan terdokumentasi, menggantikan pencatatan manual di kertas
+          atau spreadsheet yang mudah tercecer.
+        </p>
+        <p style={{ fontSize: 13, color: C.textDim, lineHeight: 1.6, margin: "0 0 18px" }}>
+          <b style={{ color: C.text }}>WLDN-CMMS</b> ini adalah aplikasi demo interaktif yang dibangun
+          khusus untuk keperluan pelatihan — menyimulasikan bagaimana modul-modul dalam CMMS
+          sungguhan saling terhubung satu sama lain dalam alur kerja maintenance sehari-hari.
+        </p>
+
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text, marginBottom: 10 }}>
+          Modul yang Tercakup
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+          {cmmsPillars.map(p => (
+            <div key={p.title} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: 7, background: C.ember + "18",
+                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1
+              }}>
+                <p.icon size={15} color={C.emberSoft} />
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{p.title}</div>
+                <div style={{ fontSize: 12, color: C.textDim, lineHeight: 1.5 }}>{p.desc}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{
+          padding: 14, borderRadius: 8,
+          background: C.panel2, border: `1px solid ${C.border}`,
+          display: "flex", alignItems: "center", gap: 12
+        }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: "50%", background: C.ember,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#fff", fontWeight: 700, fontSize: 15, flexShrink: 0
+          }}>
+            WM
+          </div>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Wildan Maradona, S.T.</div>
+            <div style={{ fontSize: 12, color: C.textDim }}>Pemateri — WM Training</div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -2086,6 +2214,7 @@ export default function CMMSDemo() {
   // Halaman detail yang sedang dibuka (null = tidak ada, tampilkan list biasa)
   const [openAssetId, setOpenAssetId] = useState(null);
   const [openWOId, setOpenWOId] = useState(null);
+  const [showAbout, setShowAbout] = useState(false);
 
   // ID counters — dibuat sekali via useMemo, counter murni naik terus,
   // tidak pernah dihitung ulang dari isi array (itu penyebab bug lama).
@@ -2315,12 +2444,25 @@ export default function CMMSDemo() {
         </button>
 
         <div style={{ marginTop: "auto", padding: "12px 6px", borderTop: `1px solid ${C.border}` }}>
-          <div style={{ fontSize: 11, color: C.textDim, lineHeight: 1.5 }}>
+          <div style={{ fontSize: 11, color: C.textDim, lineHeight: 1.5, marginBottom: 10 }}>
             Materi Training<br />
             <span style={{ color: C.steelLight }}>Maintenance of Machine Tools</span>
           </div>
+          <button
+            onClick={() => setShowAbout(true)}
+            style={{
+              display: "flex", alignItems: "center", gap: 8, width: "100%",
+              padding: "8px 10px", borderRadius: 7, border: `1px solid ${C.border}`,
+              background: "transparent", color: C.textDim, fontSize: 12.5, fontWeight: 600,
+              cursor: "pointer"
+            }}
+          >
+            <Info size={14} /> Tentang
+          </button>
         </div>
       </div>
+
+      {showAbout && <AboutModal C={C} onClose={() => setShowAbout(false)} />}
 
       {/* Main content */}
       <div style={{ flex: 1, padding: 26, overflowY: "auto" }}>
