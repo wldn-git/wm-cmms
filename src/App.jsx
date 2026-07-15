@@ -3,7 +3,8 @@ import {
   LayoutDashboard, Wrench, ClipboardList, Boxes, CalendarClock,
   AlertTriangle, CheckCircle2, Clock, Plus, X, ChevronRight, ChevronLeft,
   Search, Gauge, TrendingUp, TrendingDown, Factory, Sun, Moon,
-  Pencil, Save, Trash2, ArrowLeft, History, Link2, ShieldAlert, HelpCircle, Info
+  Pencil, Save, Trash2, ArrowLeft, History, Link2, ShieldAlert, HelpCircle, Info,
+  Package, PackageMinus
 } from "lucide-react";
 import {
   LineChart, Line, BarChart, Bar,
@@ -72,11 +73,11 @@ const seedWorkOrders = [
   { id: "WO-2026-030", asset: "AST-102", title: "Hydraulic pressure irregular", type: "corrective", priority: "high", status: "completed", assignee: "Citra W.", created: "2026-04-05", startedAt: "2026-04-05 09:00", completedAt: "2026-04-05 15:40", sourcePmId: null },
   { id: "WO-2026-029", asset: "AST-103", title: "Roller bearing failure", type: "corrective", priority: "critical", status: "completed", assignee: "Andi P.", created: "2026-03-18", startedAt: "2026-03-18 07:00", completedAt: "2026-03-18 14:20", sourcePmId: null },
   { id: "WO-2026-028", asset: "AST-101", title: "Spindle vibration excessive", type: "corrective", priority: "medium", status: "completed", assignee: "Budi S.", created: "2026-03-02", startedAt: "2026-03-02 09:30", completedAt: "2026-03-02 12:10", sourcePmId: null },
-].map(w => ({ ...w, cycleProcessed: true, assetImpactOpened: true, assetImpactCompleted: true }));
+].map(w => ({ ...w, cycleProcessed: true, assetImpactOpened: true, assetImpactCompleted: true, partsUsed: w.partsUsed || [], partsDeducted: true }));
 // ^ Data historis awal ditandai "sudah diproses" supaya efek otomatis
-//   (auto-cycle PM & dampak ke status/health aset) hanya berlaku untuk
-//   WO yang dibuat/diselesaikan lewat interaksi pengguna setelah app berjalan,
-//   bukan menimpa kondisi aset yang sudah sengaja diatur di seed data.
+//   (auto-cycle PM, dampak ke status/health aset, & pengurangan stok part)
+//   hanya berlaku untuk WO yang dibuat/diselesaikan lewat interaksi pengguna
+//   setelah app berjalan, bukan menimpa kondisi seed data yang sudah diatur.
 
 const seedPM = [
   { id: "PM-2026-001", asset: "AST-101", task: "Pelumasan spindle & pemeriksaan alignment", freq: "Bulanan", due: "2026-07-15", pic: "Andi P.", linkedWO: null },
@@ -150,6 +151,24 @@ const seedFMEA = [
     severity: 5, occurrence: 5, detection: 3,
     linkedPmId: "PM-2026-004",
   },
+];
+
+/* ---------------------------------------------------
+   SPARE PARTS — inventori komponen pengganti.
+   compatibleAssets: daftar aset yang kompatibel dengan part ini.
+   minStock: ambang batas untuk alert "stok rendah".
+--------------------------------------------------- */
+const seedSpareParts = [
+  { id: "SP-2026-001", name: "Belt Conveyor B-120 (Rubber)", category: "Mechanical", stock: 3, minStock: 2, unit: "unit", price: 850000, compatibleAssets: ["AST-103"] },
+  { id: "SP-2026-002", name: "Seal Hidrolik Set (Piston)", category: "Hydraulic", stock: 1, minStock: 3, unit: "set", price: 320000, compatibleAssets: ["AST-102"] },
+  { id: "SP-2026-003", name: "Bearing Spindle 6205ZZ", category: "Mechanical", stock: 6, minStock: 4, unit: "pcs", price: 145000, compatibleAssets: ["AST-101"] },
+  { id: "SP-2026-004", name: "Filter Udara Kompresor", category: "Pneumatic", stock: 8, minStock: 5, unit: "pcs", price: 95000, compatibleAssets: ["AST-104"] },
+  { id: "SP-2026-005", name: "Chuck Jaw Set (3-jaw)", category: "Mechanical", stock: 2, minStock: 2, unit: "set", price: 610000, compatibleAssets: ["AST-105"] },
+  { id: "SP-2026-006", name: "Oli Hidrolik ISO VG46", category: "Consumable", stock: 12, minStock: 6, unit: "liter", price: 65000, compatibleAssets: ["AST-102"] },
+  { id: "SP-2026-007", name: "Motor AC 3 Phase 5HP", category: "Electrical", stock: 1, minStock: 1, unit: "unit", price: 4200000, compatibleAssets: ["AST-103"] },
+  { id: "SP-2026-008", name: "V-Belt A-Type A38", category: "Mechanical", stock: 4, minStock: 3, unit: "pcs", price: 55000, compatibleAssets: ["AST-101", "AST-103"] },
+  { id: "SP-2026-009", name: "Grease Lithium Complex", category: "Consumable", stock: 15, minStock: 5, unit: "kg", price: 42000, compatibleAssets: ["AST-101", "AST-105"] },
+  { id: "SP-2026-010", name: "Sensor Tekanan Pneumatic", category: "Electrical", stock: 2, minStock: 2, unit: "pcs", price: 275000, compatibleAssets: ["AST-104"] },
 ];
 
 /* ---------------------------------------------------
@@ -883,23 +902,47 @@ function getTdStyle(C) {
   return { padding: "11px 14px", color: C.steelLight };
 }
 /* ================== DASHBOARD ================== */
-function Dashboard({ assets, workOrders, pms, C, onOpenAsset, onOpenWO, onNavigateTab }) {
+function Dashboard({ assets, workOrders, pms, spareParts, C, onOpenAsset, onOpenWO, onNavigateTab }) {
   const { statusMeta, priorityMeta } = getMeta(C);
   const running = assets.filter(a => a.status === "running").length;
   const down = assets.filter(a => a.status === "down").length;
   const openWO = workOrders.filter(w => w.status !== "completed").length;
   const overduePM = pms.filter(p => p.status === "overdue").length;
   const avgHealth = Math.round(assets.reduce((s, a) => s + a.health, 0) / assets.length);
+  const lowStockParts = spareParts.filter(s => s.stock < s.minStock);
 
   return (
     <div>
       <SectionHeader C={C} title="Dashboard Maintenance" subtitle="Ringkasan performa aset & aktivitas maintenance hari ini" />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 14, marginBottom: 20 }}>
         <StatCard C={C} icon={Factory} label="Aset Beroperasi" value={`${running}/${assets.length}`} sub={`${down} unit breakdown`} accent={C.ok} onClick={() => onNavigateTab("assets")} />
         <StatCard C={C} icon={ClipboardList} label="Work Order Aktif" value={openWO} sub="Perlu tindak lanjut" accent={C.ember} onClick={() => onNavigateTab("wo")} />
         <StatCard C={C} icon={AlertTriangle} label="PM Terlambat" value={overduePM} sub="Melewati jadwal" accent={C.danger} onClick={() => onNavigateTab("pm")} />
-        <StatCard C={C} icon={Gauge} label="Rata-rata Health Score" value={`${avgHealth}%`} sub="Seluruh aset" accent={C.warn} onClick={() => onNavigateTab("kpi")} />
+        <StatCard C={C} icon={Package} label="Spare Part Rendah" value={lowStockParts.length} sub="Di bawah stok minimum" accent={C.warn} onClick={() => onNavigateTab("spareparts")} />
+        <StatCard C={C} icon={Gauge} label="Rata-rata Health Score" value={`${avgHealth}%`} sub="Seluruh aset" accent={C.emberSoft} onClick={() => onNavigateTab("kpi")} />
       </div>
+
+      {lowStockParts.length > 0 && (
+        <Card C={C} style={{ marginBottom: 14, border: `1px solid ${C.warn}55` }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <AlertTriangle size={16} color={C.warn} />
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>Perlu Diisi Ulang — Spare Part Stok Rendah</div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {lowStockParts.map(sp => (
+              <div key={sp.id} style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "7px 0", borderBottom: `1px solid ${C.border}`
+              }}>
+                <span style={{ fontSize: 13, color: C.text }}>{sp.name}</span>
+                <span style={{ fontSize: 12.5, color: C.warn, fontWeight: 600 }}>
+                  Sisa {sp.stock} {sp.unit} <span style={{ color: C.textDim, fontWeight: 400 }}>(min. {sp.minStock})</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14 }}>
         <Card C={C}>
@@ -1125,11 +1168,12 @@ function WorkOrders({ workOrders, setWorkOrders, assets, pms, C, genWoId, onOpen
   );
 }
 /* ================== ASSET DETAIL PAGE ================== */
-function AssetDetail({ asset, workOrders, pms, fmea, C, onBack, onOpenWO, onOpenFmeaTab }) {
+function AssetDetail({ asset, workOrders, pms, fmea, spareParts, C, onBack, onOpenWO, onOpenFmeaTab }) {
   const { statusMeta, priorityMeta } = getMeta(C);
   const relatedWO = workOrders.filter(w => w.asset === asset.id).sort((a, b) => (a.created < b.created ? 1 : -1));
   const relatedPM = pms.filter(p => p.asset === asset.id);
   const relatedFmea = fmea.filter(f => f.asset === asset.id);
+  const relatedParts = spareParts.filter(sp => sp.compatibleAssets.includes(asset.id));
   const correctiveCount = relatedWO.filter(w => w.type === "corrective").length;
   const openCount = relatedWO.filter(w => w.status !== "completed").length;
   const highestRpn = relatedFmea.length > 0
@@ -1251,6 +1295,41 @@ function AssetDetail({ asset, workOrders, pms, fmea, C, onBack, onOpenWO, onOpen
               <tr>
                 <td colSpan={4} style={{ padding: "24px 14px", textAlign: "center", color: C.textDim, fontSize: 13 }}>
                   Belum ada analisis FMEA untuk aset ini.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+
+      <Card C={C} style={{ padding: 0, overflow: "hidden", marginTop: 14 }}>
+        <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.border}`, fontSize: 14, fontWeight: 600, color: C.text }}>
+          Spare Part Kompatibel — {asset.name}
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ background: C.panel2 }}>
+              {["Nama Part", "Kategori", "Stok", "Status"].map(h => (
+                <th key={h} style={getThStyle(C)}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {relatedParts.map(sp => {
+              const status = stockStatus(sp, C);
+              return (
+                <tr key={sp.id} style={{ borderTop: `1px solid ${C.border}` }}>
+                  <td style={{ ...getTdStyle(C), color: C.text, fontWeight: 500 }}>{sp.name}</td>
+                  <td style={getTdStyle(C)}>{sp.category}</td>
+                  <td style={getTdStyle(C)}>{sp.stock} {sp.unit}</td>
+                  <td style={getTdStyle(C)}><Badge color={status.color}>{status.label}</Badge></td>
+                </tr>
+              );
+            })}
+            {relatedParts.length === 0 && (
+              <tr>
+                <td colSpan={4} style={{ padding: "24px 14px", textAlign: "center", color: C.textDim, fontSize: 13 }}>
+                  Belum ada spare part yang terdaftar kompatibel dengan aset ini.
                 </td>
               </tr>
             )}
@@ -1520,6 +1599,352 @@ function Assets({ assets, setAssets, C, onOpenDetail }) {
   );
 }
 /* ================== PM ROW ================== */
+/* ================== SPARE PARTS ================== */
+function stockStatus(sp, C) {
+  if (sp.stock <= 0) return { label: "Habis", color: C.danger };
+  if (sp.stock < sp.minStock) return { label: "Stok Rendah", color: C.warn };
+  return { label: "Aman", color: C.ok };
+}
+
+function formatRupiah(n) {
+  return "Rp " + Number(n).toLocaleString("id-ID");
+}
+
+function SparePartRow({ sp, C, onSave, onDelete, assetIds, isEditing, onStartEdit, onStopEdit, onOpenAsset }) {
+  const tdStyle = getTdStyle(C);
+  const inputStyle = getInputStyle(C);
+  const [draft, setDraft] = useState(sp);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const startEdit = () => { setDraft(sp); onStartEdit(sp.id); };
+  const save = () => {
+    onSave({ ...draft, stock: Number(draft.stock), minStock: Number(draft.minStock), price: Number(draft.price) });
+    onStopEdit();
+  };
+
+  const handleDeleteClick = () => {
+    if (confirmDelete) {
+      onDelete(sp.id);
+    } else {
+      setConfirmDelete(true);
+      setTimeout(() => setConfirmDelete(false), 3000);
+    }
+  };
+
+  const status = stockStatus(sp, C);
+
+  if (!isEditing) {
+    return (
+      <tr style={{ borderTop: `1px solid ${C.border}` }}>
+        <td style={tdStyle}><span style={{ color: C.textDim }}>{sp.id}</span></td>
+        <td style={{ ...tdStyle, color: C.text, fontWeight: 500 }}>{sp.name}</td>
+        <td style={tdStyle}>{sp.category}</td>
+        <td style={{ ...tdStyle, textAlign: "center" }}>{sp.stock} {sp.unit}</td>
+        <td style={{ ...tdStyle, textAlign: "center", color: C.textDim }}>{sp.minStock} {sp.unit}</td>
+        <td style={tdStyle}><Badge color={status.color}>{status.label}</Badge></td>
+        <td style={tdStyle}>{formatRupiah(sp.price)}</td>
+        <td style={tdStyle}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {sp.compatibleAssets.map(aid => (
+              <LinkButton key={aid} C={C} onClick={() => onOpenAsset(aid)}>{aid}</LinkButton>
+            ))}
+          </div>
+        </td>
+        <td style={tdStyle}>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button onClick={startEdit} aria-label="Edit part" style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.border}`,
+              background: "transparent", color: C.textDim, cursor: "pointer"
+            }}>
+              <Pencil size={13} />
+            </button>
+            <button onClick={handleDeleteClick} aria-label="Hapus part" style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              gap: 4, height: 26, padding: confirmDelete ? "0 8px" : 0,
+              width: confirmDelete ? "auto" : 26, borderRadius: 6,
+              border: `1px solid ${confirmDelete ? C.danger : C.border}`,
+              background: confirmDelete ? C.danger + "1c" : "transparent",
+              color: confirmDelete ? C.danger : C.textDim, cursor: "pointer",
+              fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap"
+            }}>
+              <Trash2 size={13} />
+              {confirmDelete && "Yakin?"}
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr style={{ borderTop: `1px solid ${C.border}`, background: C.panel2 }}>
+      <td style={tdStyle}><span style={{ color: C.textDim }}>{sp.id}</span></td>
+      <td style={tdStyle}><input value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })} style={{ ...inputStyle, width: "100%" }} /></td>
+      <td style={tdStyle}><input value={draft.category} onChange={e => setDraft({ ...draft, category: e.target.value })} style={{ ...inputStyle, width: 100 }} /></td>
+      <td style={tdStyle}><input type="number" min={0} value={draft.stock} onChange={e => setDraft({ ...draft, stock: e.target.value })} style={{ ...inputStyle, width: 60, textAlign: "center" }} /></td>
+      <td style={tdStyle}><input type="number" min={0} value={draft.minStock} onChange={e => setDraft({ ...draft, minStock: e.target.value })} style={{ ...inputStyle, width: 60, textAlign: "center" }} /></td>
+      <td style={tdStyle}><Badge color={stockStatus(draft, C).color}>{stockStatus(draft, C).label}</Badge></td>
+      <td style={tdStyle}><input type="number" min={0} value={draft.price} onChange={e => setDraft({ ...draft, price: e.target.value })} style={{ ...inputStyle, width: 100 }} /></td>
+      <td style={tdStyle}>
+        <select multiple value={draft.compatibleAssets} onChange={e => setDraft({ ...draft, compatibleAssets: Array.from(e.target.selectedOptions, o => o.value) })}
+          style={{ ...inputStyle, width: 100, height: 56 }}>
+          {assetIds.map(id => <option key={id} value={id}>{id}</option>)}
+        </select>
+      </td>
+      <td style={tdStyle}>
+        <button onClick={save} aria-label="Simpan" style={{
+          display: "flex", alignItems: "center", gap: 4, padding: "5px 9px",
+          background: C.ember, color: "#fff", border: "none", borderRadius: 6,
+          fontSize: 12, fontWeight: 600, cursor: "pointer"
+        }}><Save size={12} /> Simpan</button>
+      </td>
+    </tr>
+  );
+}
+
+function SpareParts({ spareParts, setSpareParts, assets, C, onOpenAsset, genSpId }) {
+  const thStyle = getThStyle(C);
+  const inputStyle = getInputStyle(C);
+  const assetIds = assets.map(a => a.id);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [q, setQ] = useState("");
+  const [form, setForm] = useState({
+    name: "", category: "", stock: 0, minStock: 1, unit: "pcs", price: 0, compatibleAssets: []
+  });
+
+  const saveSp = (updated) => {
+    setSpareParts(prev => prev.map(s => s.id === updated.id ? updated : s));
+  };
+
+  const deleteSp = (id) => {
+    setSpareParts(prev => prev.filter(s => s.id !== id));
+    if (editingId === id) setEditingId(null);
+  };
+
+  const addSp = () => {
+    if (!form.name.trim()) return;
+    const newId = genSpId();
+    setSpareParts(prev => [...prev, {
+      ...form, id: newId,
+      stock: Number(form.stock), minStock: Number(form.minStock), price: Number(form.price)
+    }]);
+    setForm({ name: "", category: "", stock: 0, minStock: 1, unit: "pcs", price: 0, compatibleAssets: [] });
+    setShowForm(false);
+  };
+
+  const filtered = spareParts.filter(s =>
+    s.name.toLowerCase().includes(q.toLowerCase()) || s.id.toLowerCase().includes(q.toLowerCase())
+  );
+
+  const lowStockCount = spareParts.filter(s => s.stock < s.minStock).length;
+  const outOfStockCount = spareParts.filter(s => s.stock <= 0).length;
+  const totalValue = spareParts.reduce((sum, s) => sum + s.stock * s.price, 0);
+
+  return (
+    <div>
+      <SectionHeader
+        C={C}
+        title="Manajemen Spare Part"
+        subtitle="Inventori komponen pengganti — stok otomatis berkurang saat Work Order diselesaikan"
+        action={
+          <button onClick={() => setShowForm(!showForm)} style={{
+            display: "flex", alignItems: "center", gap: 6, padding: "8px 14px",
+            background: C.ember, color: "#fff", border: "none", borderRadius: 8,
+            fontSize: 13, fontWeight: 600, cursor: "pointer"
+          }}>
+            <Plus size={15} /> Spare Part Baru
+          </button>
+        }
+      />
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 18 }}>
+        <StatCard C={C} icon={AlertTriangle} label="Stok Rendah / Habis" value={lowStockCount} sub={outOfStockCount > 0 ? `${outOfStockCount} item habis total` : "Perlu diisi ulang"} accent={C.warn} />
+        <StatCard C={C} icon={Package} label="Total Jenis Part" value={spareParts.length} accent={C.steel} />
+        <StatCard C={C} icon={Gauge} label="Nilai Inventori" value={formatRupiah(totalValue)} accent={C.emberSoft} />
+      </div>
+
+      {showForm && (
+        <Card C={C} style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>Tambah Spare Part</div>
+            <X size={16} color={C.textDim} style={{ cursor: "pointer" }} onClick={() => setShowForm(false)} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 8 }}>
+              <input placeholder="Nama spare part" value={form.name}
+                onChange={e => setForm({ ...form, name: e.target.value })} style={inputStyle} />
+              <input placeholder="Kategori (mis. Mechanical)" value={form.category}
+                onChange={e => setForm({ ...form, category: e.target.value })} style={inputStyle} />
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
+              <div>
+                <div style={{ fontSize: 11, color: C.textDim, marginBottom: 4 }}>Stok Awal</div>
+                <input type="number" min={0} value={form.stock} onChange={e => setForm({ ...form, stock: e.target.value })} style={{ ...inputStyle, width: "100%" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: C.textDim, marginBottom: 4 }}>Stok Minimum</div>
+                <input type="number" min={0} value={form.minStock} onChange={e => setForm({ ...form, minStock: e.target.value })} style={{ ...inputStyle, width: "100%" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: C.textDim, marginBottom: 4 }}>Satuan</div>
+                <input placeholder="pcs/unit/liter" value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} style={{ ...inputStyle, width: "100%" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: C.textDim, marginBottom: 4 }}>Harga Satuan (Rp)</div>
+                <input type="number" min={0} value={form.price} onChange={e => setForm({ ...form, price: e.target.value })} style={{ ...inputStyle, width: "100%" }} />
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: C.textDim, marginBottom: 4 }}>Aset Kompatibel (ctrl/cmd+klik untuk pilih lebih dari satu)</div>
+              <select multiple value={form.compatibleAssets}
+                onChange={e => setForm({ ...form, compatibleAssets: Array.from(e.target.selectedOptions, o => o.value) })}
+                style={{ ...inputStyle, width: "100%", height: 90 }}>
+                {assetIds.map(id => <option key={id} value={id}>{id}</option>)}
+              </select>
+            </div>
+          </div>
+          <button onClick={addSp} style={{
+            marginTop: 12, padding: "8px 16px", background: C.ember, color: "#fff",
+            border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer"
+          }}>Simpan</button>
+        </Card>
+      )}
+
+      <div style={{ position: "relative", marginBottom: 16, maxWidth: 320 }}>
+        <Search size={15} color={C.textDim} style={{ position: "absolute", left: 12, top: 11 }} />
+        <input placeholder="Cari spare part..." value={q} onChange={e => setQ(e.target.value)}
+          style={{ ...inputStyle, paddingLeft: 34, width: "100%" }} />
+      </div>
+
+      <Card C={C} style={{ padding: 0, overflow: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, minWidth: 950 }}>
+          <thead>
+            <tr style={{ background: C.panel2 }}>
+              {["ID", "Nama Part", "Kategori", "Stok", "Min. Stok", "Status", "Harga", "Aset Kompatibel", ""].map(h => (
+                <th key={h} style={thStyle}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(sp => (
+              <SparePartRow
+                key={sp.id}
+                sp={sp}
+                C={C}
+                onSave={saveSp}
+                onDelete={deleteSp}
+                assetIds={assetIds}
+                isEditing={editingId === sp.id}
+                onStartEdit={setEditingId}
+                onStopEdit={() => setEditingId(null)}
+                onOpenAsset={onOpenAsset}
+              />
+            ))}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={9} style={{ padding: "24px 14px", textAlign: "center", color: C.textDim, fontSize: 13 }}>
+                  Tidak ada spare part yang cocok.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+/* Widget pemilih part yang dipakai — dipasang di dalam WODetail,
+   supaya teknisi bisa mencatat part apa saja yang dipakai untuk
+   WO tertentu. Perubahan stok baru diterapkan saat WO selesai. */
+function PartUsagePicker({ wo, spareParts, C, onUpdateParts }) {
+  const inputStyle = getInputStyle(C);
+  const compatible = spareParts.filter(sp => sp.compatibleAssets.includes(wo.asset));
+  const [selectedPart, setSelectedPart] = useState(compatible[0]?.id || "");
+  const [qty, setQty] = useState(1);
+
+  const addPart = () => {
+    if (!selectedPart) return;
+    const existing = wo.partsUsed.find(p => p.partId === selectedPart);
+    const nextParts = existing
+      ? wo.partsUsed.map(p => p.partId === selectedPart ? { ...p, qty: p.qty + Number(qty) } : p)
+      : [...wo.partsUsed, { partId: selectedPart, qty: Number(qty) }];
+    onUpdateParts(nextParts);
+    setQty(1);
+  };
+
+  const removePart = (partId) => {
+    onUpdateParts(wo.partsUsed.filter(p => p.partId !== partId));
+  };
+
+  const partName = (id) => spareParts.find(sp => sp.id === id)?.name || id;
+  const partUnit = (id) => spareParts.find(sp => sp.id === id)?.unit || "";
+  const canEdit = wo.status !== "completed";
+
+  return (
+    <Card C={C}>
+      <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 12 }}>Spare Part Terpakai</div>
+
+      {wo.partsUsed.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: canEdit ? 14 : 0 }}>
+          {wo.partsUsed.map(p => (
+            <div key={p.partId} style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "8px 0", borderBottom: `1px solid ${C.border}`
+            }}>
+              <div style={{ fontSize: 13, color: C.text }}>
+                {partName(p.partId)} <span style={{ color: C.textDim }}>× {p.qty} {partUnit(p.partId)}</span>
+              </div>
+              {canEdit && (
+                <button onClick={() => removePart(p.partId)} style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  width: 22, height: 22, borderRadius: 5, border: `1px solid ${C.border}`,
+                  background: "transparent", color: C.textDim, cursor: "pointer"
+                }}>
+                  <X size={11} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12.5, color: C.textDim, marginBottom: canEdit ? 14 : 0 }}>
+          Belum ada spare part yang dicatat untuk WO ini.
+        </div>
+      )}
+
+      {canEdit && (
+        compatible.length > 0 ? (
+          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr auto", gap: 8 }}>
+            <select value={selectedPart} onChange={e => setSelectedPart(e.target.value)} style={inputStyle}>
+              {compatible.map(sp => (
+                <option key={sp.id} value={sp.id}>{sp.name} (stok: {sp.stock} {sp.unit})</option>
+              ))}
+            </select>
+            <input type="number" min={1} value={qty} onChange={e => setQty(e.target.value)} style={inputStyle} />
+            <button onClick={addPart} style={{
+              display: "flex", alignItems: "center", gap: 4, padding: "8px 12px",
+              background: C.ember, color: "#fff", border: "none", borderRadius: 7,
+              fontSize: 12.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap"
+            }}>
+              <Plus size={13} /> Tambah
+            </button>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: C.textDim }}>Tidak ada spare part yang kompatibel dengan aset ini.</div>
+        )
+      )}
+      {!canEdit && wo.partsUsed.length > 0 && (
+        <div style={{ fontSize: 11, color: C.textDim, marginTop: 10, display: "flex", alignItems: "center", gap: 5 }}>
+          <PackageMinus size={12} /> Stok sudah dipotong otomatis saat WO ini diselesaikan.
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function PMRow({ pm, C, onSave, onDelete, assetIds, isEditing, onStartEdit, onStopEdit, onGenerateWO, onOpenAsset, onOpenWO }) {
   const { statusMeta } = getMeta(C);
   const tdStyle = getTdStyle(C);
@@ -2298,7 +2723,7 @@ function FMEA({ fmea, setFmea, assets, pms, C, onOpenAsset, onOpenPm, onGenerate
   );
 }
 
-function WODetail({ wo, asset, linkedPm, C, onBack, onOpenAsset, onOpenPm }) {
+function WODetail({ wo, asset, linkedPm, spareParts, C, onBack, onOpenAsset, onOpenPm, onUpdateParts }) {
   const { statusMeta, priorityMeta } = getMeta(C);
   return (
     <div>
@@ -2321,33 +2746,36 @@ function WODetail({ wo, asset, linkedPm, C, onBack, onOpenAsset, onOpenPm }) {
           <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>{wo.assignee}</div>
         </Card>
       </div>
-      <Card C={C}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 14 }}>Detail & Keterkaitan</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
-            <span style={{ color: C.textDim }}>Aset Terkait</span>
-            {asset ? <LinkButton C={C} onClick={() => onOpenAsset(asset.id)}>{asset.name} ({asset.id})</LinkButton> : <span>{wo.asset}</span>}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <Card C={C}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 14 }}>Detail & Keterkaitan</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ color: C.textDim }}>Aset Terkait</span>
+              {asset ? <LinkButton C={C} onClick={() => onOpenAsset(asset.id)}>{asset.name} ({asset.id})</LinkButton> : <span>{wo.asset}</span>}
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ color: C.textDim }}>Sumber</span>
+              {linkedPm
+                ? <LinkButton C={C} icon={Link2} onClick={() => onOpenPm(linkedPm.id)}>Jadwal PM {linkedPm.id}</LinkButton>
+                : <span style={{ color: C.text }}>Dibuat manual</span>}
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ color: C.textDim }}>Dibuat</span>
+              <span style={{ color: C.text }}>{wo.created}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ color: C.textDim }}>Mulai Dikerjakan</span>
+              <span style={{ color: C.text }}>{wo.startedAt || "—"}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0" }}>
+              <span style={{ color: C.textDim }}>Selesai</span>
+              <span style={{ color: C.text }}>{wo.completedAt || "Belum selesai"}</span>
+            </div>
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
-            <span style={{ color: C.textDim }}>Sumber</span>
-            {linkedPm
-              ? <LinkButton C={C} icon={Link2} onClick={() => onOpenPm(linkedPm.id)}>Jadwal PM {linkedPm.id}</LinkButton>
-              : <span style={{ color: C.text }}>Dibuat manual</span>}
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
-            <span style={{ color: C.textDim }}>Dibuat</span>
-            <span style={{ color: C.text }}>{wo.created}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
-            <span style={{ color: C.textDim }}>Mulai Dikerjakan</span>
-            <span style={{ color: C.text }}>{wo.startedAt || "—"}</span>
-          </div>
-          <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 0" }}>
-            <span style={{ color: C.textDim }}>Selesai</span>
-            <span style={{ color: C.text }}>{wo.completedAt || "Belum selesai"}</span>
-          </div>
-        </div>
-      </Card>
+        </Card>
+        <PartUsagePicker wo={wo} spareParts={spareParts} C={C} onUpdateParts={nextParts => onUpdateParts(wo.id, nextParts)} />
+      </div>
     </div>
   );
 }
@@ -2363,6 +2791,7 @@ export default function CMMSDemo() {
   const [pms, setPms] = useState(() => seedPM.map(p => ({ ...p, status: computeAutoPmStatus(p.due) })));
   const [pmHistory, setPmHistory] = useState([]);
   const [fmea, setFmea] = useState(seedFMEA);
+  const [spareParts, setSpareParts] = useState(seedSpareParts);
 
   // Halaman detail yang sedang dibuka (null = tidak ada, tampilkan list biasa)
   const [openAssetId, setOpenAssetId] = useState(null);
@@ -2374,6 +2803,7 @@ export default function CMMSDemo() {
   const genWoId = useMemo(() => createIdCounter("WO", 42), []);
   const genPmId = useMemo(() => createIdCounter("PM", 7), []);
   const genFmId = useMemo(() => createIdCounter("FM", 7), []);
+  const genSpId = useMemo(() => createIdCounter("SP", 11), []);
 
   const priorityFromPmStatus = (status) => status === "overdue" ? "high" : "medium";
 
@@ -2452,6 +2882,25 @@ export default function CMMSDemo() {
       }
       return a;
     }));
+  };
+
+  /* -------------------------------------------------
+     KORELASI: Work Order selesai -> stok Spare Part berkurang
+     Dipanggil sekali per WO (dijaga oleh flag partsDeducted),
+     mengurangi stok sesuai qty yang dicatat di wo.partsUsed.
+     Stok tidak dipaksa negatif — dibatasi minimum 0.
+  ------------------------------------------------- */
+  const deductPartsStock = (wo) => {
+    if (!wo.partsUsed || wo.partsUsed.length === 0) return;
+    setSpareParts(prev => prev.map(sp => {
+      const used = wo.partsUsed.find(p => p.partId === sp.id);
+      if (!used) return sp;
+      return { ...sp, stock: Math.max(0, sp.stock - used.qty) };
+    }));
+  };
+
+  const updateWOParts = (woId, nextParts) => {
+    setWorkOrders(prev => prev.map(w => w.id === woId ? { ...w, partsUsed: nextParts } : w));
   };
 
   /* -------------------------------------------------
@@ -2543,6 +2992,24 @@ export default function CMMSDemo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workOrders.map(w => `${w.id}:${w.status}:${w.assetImpactOpened}:${w.assetImpactCompleted}`).join("|")]);
 
+  /* -------------------------------------------------
+     KORELASI: WO selesai -> potong stok Spare Part yang dipakai.
+     Berlaku untuk SEMUA tipe WO (korektif/preventif/prediktif),
+     bukan cuma korektif — karena penggantian part bisa terjadi
+     di jenis pekerjaan apa pun. Dijaga flag partsDeducted supaya
+     hanya dipotong sekali per WO.
+  ------------------------------------------------- */
+  useEffect(() => {
+    const needsDeduction = workOrders.filter(w => w.status === "completed" && !w.partsDeducted);
+    if (needsDeduction.length === 0) return;
+
+    needsDeduction.forEach(wo => {
+      deductPartsStock(wo);
+      setWorkOrders(prev => prev.map(w => w.id === wo.id ? { ...w, partsDeducted: true } : w));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workOrders.map(w => `${w.id}:${w.status}:${w.partsDeducted}`).join("|")]);
+
   const tabs = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "wo", label: "Work Order", icon: ClipboardList },
@@ -2550,6 +3017,7 @@ export default function CMMSDemo() {
     { id: "pm", label: "Jadwal PM", icon: CalendarClock },
     { id: "pmhistory", label: "Riwayat PM", icon: History },
     { id: "fmea", label: "FMEA", icon: ShieldAlert },
+    { id: "spareparts", label: "Spare Part", icon: Package },
     { id: "kpi", label: "KPI & Laporan", icon: Gauge },
   ];
 
@@ -2620,7 +3088,7 @@ export default function CMMSDemo() {
       {/* Main content */}
       <div style={{ flex: 1, padding: 26, overflowY: "auto" }}>
         {tab === "dashboard" && (
-          <Dashboard C={C} assets={assets} workOrders={workOrders} pms={pms}
+          <Dashboard C={C} assets={assets} workOrders={workOrders} pms={pms} spareParts={spareParts}
             onOpenAsset={openAssetDetail} onOpenWO={openWODetail} onNavigateTab={navigateTab} />
         )}
 
@@ -2630,15 +3098,16 @@ export default function CMMSDemo() {
             filterAssetId={null} onClearAssetFilter={() => {}} />
         )}
         {tab === "wo" && openWO && (
-          <WODetail wo={openWO} asset={openWOAsset} linkedPm={openWOLinkedPm} C={C}
-            onBack={() => setOpenWOId(null)} onOpenAsset={openAssetDetail} onOpenPm={openPmFromAnywhere} />
+          <WODetail wo={openWO} asset={openWOAsset} linkedPm={openWOLinkedPm} spareParts={spareParts} C={C}
+            onBack={() => setOpenWOId(null)} onOpenAsset={openAssetDetail} onOpenPm={openPmFromAnywhere}
+            onUpdateParts={updateWOParts} />
         )}
 
         {tab === "assets" && !openAsset && (
           <Assets C={C} assets={assets} setAssets={setAssets} onOpenDetail={openAssetDetail} />
         )}
         {tab === "assets" && openAsset && (
-          <AssetDetail asset={openAsset} workOrders={workOrders} pms={pms} fmea={fmea} C={C}
+          <AssetDetail asset={openAsset} workOrders={workOrders} pms={pms} fmea={fmea} spareParts={spareParts} C={C}
             onBack={() => setOpenAssetId(null)} onOpenWO={openWODetail}
             onOpenFmeaTab={() => navigateTab("fmea")} />
         )}
@@ -2654,6 +3123,10 @@ export default function CMMSDemo() {
           <FMEA C={C} fmea={fmea} setFmea={setFmea} assets={assets} pms={pms}
             onOpenAsset={openAssetDetail} onOpenPm={openPmFromAnywhere}
             onGeneratePM={generatePMFromFMEA} genFmId={genFmId} />
+        )}
+        {tab === "spareparts" && (
+          <SpareParts C={C} spareParts={spareParts} setSpareParts={setSpareParts} assets={assets}
+            onOpenAsset={openAssetDetail} genSpId={genSpId} />
         )}
         {tab === "kpi" && <KPIReport C={C} assets={assets} workOrders={workOrders} />}
       </div>
