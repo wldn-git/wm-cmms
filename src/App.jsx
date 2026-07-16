@@ -50,12 +50,12 @@ function createIdCounter(prefix, startAt) {
    SEED DATA
 =================================================== */
 const seedAssets = [
-  { id: "AST-101", name: "CNC Milling Machine #1", location: "Line A - Bay 3", status: "running", health: 92, lastMaint: "2026-06-15", nextMaint: "2026-07-15", criticality: "high" },
-  { id: "AST-102", name: "Hydraulic Press #2", location: "Line A - Bay 5", status: "running", health: 78, lastMaint: "2026-06-01", nextMaint: "2026-07-10", criticality: "high" },
-  { id: "AST-103", name: "Conveyor Belt Unit 4", location: "Line B - Bay 1", status: "down", health: 34, lastMaint: "2026-05-20", nextMaint: "2026-07-05", criticality: "medium" },
-  { id: "AST-104", name: "Air Compressor Unit A", location: "Utility Room", status: "running", health: 88, lastMaint: "2026-06-20", nextMaint: "2026-08-01", criticality: "medium" },
-  { id: "AST-105", name: "Lathe Machine #3", location: "Line A - Bay 2", status: "maintenance", health: 55, lastMaint: "2026-07-08", nextMaint: "2026-07-18", criticality: "low" },
-  { id: "AST-106", name: "Cooling Tower System", location: "Utility Yard", status: "running", health: 95, lastMaint: "2026-06-25", nextMaint: "2026-08-10", criticality: "high" },
+  { id: "AST-101", name: "CNC Milling Machine #1", location: "Line A - Bay 3", status: "running", lastMaint: "2026-06-15", nextMaint: "2026-07-15", criticality: "high" },
+  { id: "AST-102", name: "Hydraulic Press #2", location: "Line A - Bay 5", status: "running", lastMaint: "2026-06-01", nextMaint: "2026-07-10", criticality: "high" },
+  { id: "AST-103", name: "Conveyor Belt Unit 4", location: "Line B - Bay 1", status: "down", lastMaint: "2026-05-20", nextMaint: "2026-07-05", criticality: "medium" },
+  { id: "AST-104", name: "Air Compressor Unit A", location: "Utility Room", status: "running", lastMaint: "2026-06-20", nextMaint: "2026-08-01", criticality: "medium" },
+  { id: "AST-105", name: "Lathe Machine #3", location: "Line A - Bay 2", status: "maintenance", lastMaint: "2026-07-08", nextMaint: "2026-07-18", criticality: "low" },
+  { id: "AST-106", name: "Cooling Tower System", location: "Utility Yard", status: "running", lastMaint: "2026-06-25", nextMaint: "2026-08-10", criticality: "high" },
 ];
 
 const seedWorkOrders = [
@@ -257,6 +257,100 @@ function calcMTBF(workOrders) {
   if (gaps.length === 0) return null;
   const avgHours = gaps.reduce((s, h) => s + h, 0) / gaps.length;
   return { value: avgHours, sampleSize: gaps.length };
+}
+
+/* ===================================================
+   HEALTH SCORE — dihitung otomatis dari riwayat data,
+   bukan input manual. Formula:
+
+   Health = 100
+            - Penalti Frekuensi   (WO korektif 6 bulan terakhir)
+            - Penalti Kebaruan    (breakdown yang baru terjadi)
+            - Penalti Downtime    (total durasi perbaikan)
+            + Bonus Kepatuhan PM  (histori PM tidak pernah telat)
+
+   Skor dibatasi ke rentang 0-100.
+=================================================== */
+const HEALTH_OBSERVATION_DAYS = 180; // jendela pengamatan 6 bulan
+
+function calcHealthScore(assetId, workOrders, pmHistory) {
+  const today = new Date();
+
+  const correctiveWOs = workOrders.filter(w =>
+    w.asset === assetId && w.type === "corrective" &&
+    w.startedAt
+  );
+
+  const recentCorrective = correctiveWOs.filter(w => {
+    const started = new Date(w.startedAt.length > 10 ? w.startedAt : w.startedAt + " 00:00");
+    const daysAgo = (today - started) / (1000 * 60 * 60 * 24);
+    return daysAgo <= HEALTH_OBSERVATION_DAYS;
+  });
+
+  // 1) Penalti Frekuensi — tiap WO korektif dalam 6 bulan terakhir mengurangi skor.
+  //    Efeknya diperlemah (diminishing) supaya breakdown ke-10 tidak menghukum
+  //    sama beratnya dengan breakdown pertama.
+  const freqPenalty = Math.min(45, recentCorrective.length * 7);
+
+  // 2) Penalti Kebaruan — breakdown yang BARU terjadi (belum lama) dianggap
+  //    "belum sepenuhnya pulih", jadi menurunkan skor lebih besar daripada
+  //    breakdown yang sudah lama berlalu.
+  let recencyPenalty = 0;
+  const completedCorrective = correctiveWOs.filter(w => w.status === "completed" && w.completedAt);
+  if (completedCorrective.length > 0) {
+    const lastCompleted = completedCorrective
+      .map(w => new Date(w.completedAt.length > 10 ? w.completedAt : w.completedAt + " 00:00"))
+      .sort((a, b) => b - a)[0];
+    const daysSinceLast = Math.max(0, (today - lastCompleted) / (1000 * 60 * 60 * 24));
+    if (daysSinceLast <= 7) recencyPenalty = 15;
+    else if (daysSinceLast <= 30) recencyPenalty = 8;
+    else if (daysSinceLast <= 90) recencyPenalty = 3;
+  }
+  // Kalau ada WO korektif yang MASIH BERJALAN (belum selesai), aset dianggap
+  // sedang dalam kondisi terganggu -> penalti tambahan.
+  const stillOpenCorrective = correctiveWOs.some(w => w.status !== "completed");
+  if (stillOpenCorrective) recencyPenalty = Math.max(recencyPenalty, 20);
+
+  // 3) Penalti Downtime — total durasi perbaikan (jam) dalam periode pengamatan,
+  //    dikonversi jadi persentase dari total jam observasi.
+  const totalDowntimeHours = completedCorrective.reduce((sum, w) => {
+    const started = new Date(w.startedAt.length > 10 ? w.startedAt : w.startedAt + " 00:00");
+    const daysAgo = (today - started) / (1000 * 60 * 60 * 24);
+    if (daysAgo > HEALTH_OBSERVATION_DAYS) return sum;
+    const start = new Date(w.startedAt.length > 10 ? w.startedAt : w.startedAt + " 00:00");
+    const end = new Date(w.completedAt.length > 10 ? w.completedAt : w.completedAt + " 00:00");
+    return sum + Math.max(0, (end - start) / (1000 * 60 * 60));
+  }, 0);
+  const observationHours = HEALTH_OBSERVATION_DAYS * 24;
+  const downtimePenalty = Math.min(20, Math.round((totalDowntimeHours / observationHours) * 100 * 4));
+
+  // 4) Bonus Kepatuhan PM — dari riwayat siklus PM yang sudah selesai untuk
+  //    aset ini, cek apakah cenderung diselesaikan sebelum/tepat jatuh tempo.
+  const assetPmHistory = pmHistory.filter(h => h.asset === assetId);
+  let pmBonus = 0;
+  if (assetPmHistory.length > 0) {
+    const onTimeCount = assetPmHistory.filter(h => {
+      const due = new Date(h.due + "T00:00:00");
+      const completed = new Date((h.completedAt || "").split(" ")[0] + "T00:00:00");
+      return completed <= due;
+    }).length;
+    const onTimeRatio = onTimeCount / assetPmHistory.length;
+    pmBonus = Math.round(onTimeRatio * 10);
+  }
+
+  const rawScore = 100 - freqPenalty - recencyPenalty - downtimePenalty + pmBonus;
+  const finalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+
+  return {
+    score: finalScore,
+    breakdown: {
+      base: 100,
+      freqPenalty, recencyPenalty, downtimePenalty, pmBonus,
+      recentCorrectiveCount: recentCorrective.length,
+      totalDowntimeHours: Math.round(totalDowntimeHours * 10) / 10,
+      pmOnTimeRatio: assetPmHistory.length > 0 ? Math.round((pmBonus / 10) * 100) : null,
+    },
+  };
 }
 
 const DUE_SOON_WINDOW_DAYS = 7;
@@ -740,6 +834,197 @@ function MTTRMTBFInfoModal({ C, onClose }) {
 }
 
 /* ===================================================
+   PENJELASAN HEALTH SCORE — modal popup dengan pemaparan
+   bertahap: dasar -> rumus -> breakdown komponen -> tingkat
+   lanjut (advance). Health Score dihitung otomatis dari
+   riwayat data, bukan input manual.
+=================================================== */
+function HealthScoreInfoModal({ C, onClose }) {
+  const [level, setLevel] = useState("dasar"); // dasar | rumus | advance
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        zIndex: 1000, padding: 20
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background: C.panel, border: `1px solid ${C.border}`, borderRadius: 12,
+          maxWidth: 680, width: "100%", maxHeight: "85vh", overflowY: "auto",
+          padding: 24, boxShadow: "0 20px 60px rgba(0,0,0,0.4)"
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+            <div style={{
+              width: 34, height: 34, borderRadius: 8, background: C.ember + "20",
+              display: "flex", alignItems: "center", justifyContent: "center"
+            }}>
+              <Gauge size={18} color={C.emberSoft} />
+            </div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: C.text }}>Bagaimana Health Score Dihitung?</div>
+          </div>
+          <button onClick={onClose} style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: 28, height: 28, borderRadius: 7, border: `1px solid ${C.border}`,
+            background: "transparent", color: C.textDim, cursor: "pointer", flexShrink: 0
+          }}>
+            <X size={15} />
+          </button>
+        </div>
+
+        {/* Tab pemilih tingkat penjelasan */}
+        <div style={{ display: "flex", gap: 6, margin: "14px 0 18px" }}>
+          {[
+            { id: "dasar", label: "Dasar" },
+            { id: "rumus", label: "Rumus & Komponen" },
+            { id: "advance", label: "Tingkat Lanjut" },
+          ].map(t => (
+            <button key={t.id} onClick={() => setLevel(t.id)} style={{
+              padding: "6px 13px", borderRadius: 20, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+              border: `1px solid ${level === t.id ? C.ember : C.border}`,
+              background: level === t.id ? C.ember + "22" : "transparent",
+              color: level === t.id ? C.emberSoft : C.textDim
+            }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {level === "dasar" && (
+          <div>
+            <p style={{ fontSize: 13, color: C.textDim, lineHeight: 1.6, margin: "0 0 14px" }}>
+              <b style={{ color: C.text }}>Health Score bukan angka yang diinput manual</b> — di aplikasi ini,
+              skor dihitung otomatis dari <b style={{ color: C.text }}>riwayat Work Order korektif</b> dan
+              <b style={{ color: C.text }}> kepatuhan jadwal PM</b> milik aset tersebut. Ini meniru cara CMMS
+              sungguhan menilai kondisi aset — bukan berdasarkan tebakan atau perasaan, tapi jejak data.
+            </p>
+            <div style={{
+              padding: 14, borderRadius: 8, background: C.panel2, border: `1px solid ${C.border}`, marginBottom: 14
+            }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: C.text, marginBottom: 8 }}>Logika sederhananya</div>
+              <div style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.7 }}>
+                • Aset mulai dari skor <b style={{ color: C.ok }}>100</b> (sempurna, tanpa riwayat masalah)<br />
+                • Setiap kali ada <b style={{ color: C.text }}>WO korektif</b> (perbaikan kerusakan), skor turun<br />
+                • Makin <b style={{ color: C.text }}>sering</b> rusak dan makin <b style={{ color: C.text }}>baru</b> kejadiannya, skor turun makin banyak<br />
+                • Kalau jadwal PM rutin <b style={{ color: C.text }}>tidak pernah telat</b>, ada sedikit bonus poin
+              </div>
+            </div>
+            <div style={{ fontSize: 12, color: C.textDim, lineHeight: 1.6 }}>
+              Contoh: aset yang tidak pernah rusak akan tetap di skor 100. Aset yang sering breakdown dan baru
+              saja mengalami kerusakan akan punya skor rendah — menandakan perlu perhatian ekstra.
+            </div>
+          </div>
+        )}
+
+        {level === "rumus" && (
+          <div>
+            <div style={{
+              padding: 14, borderRadius: 8, background: C.panel2, border: `1px solid ${C.border}`, marginBottom: 16,
+              fontFamily: "monospace", fontSize: 12.5, color: C.text, lineHeight: 1.8
+            }}>
+              Health Score = 100<br />
+              &nbsp;&nbsp;− Penalti Frekuensi<br />
+              &nbsp;&nbsp;− Penalti Kebaruan<br />
+              &nbsp;&nbsp;− Penalti Downtime<br />
+              &nbsp;&nbsp;+ Bonus Kepatuhan PM<br />
+              <span style={{ color: C.textDim }}>(dibatasi ke rentang 0-100)</span>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.danger, marginBottom: 3 }}>Penalti Frekuensi (maks. −45)</div>
+                <div style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.55 }}>
+                  Tiap WO korektif dalam 6 bulan terakhir mengurangi 7 poin. Dibatasi maksimum 45 poin
+                  supaya breakdown ke-10 tidak dihukum sekeras breakdown pertama (diminishing effect).
+                </div>
+              </div>
+              <div style={{ paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.danger, marginBottom: 3 }}>Penalti Kebaruan (maks. −20)</div>
+                <div style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.55 }}>
+                  Breakdown yang baru selesai ≤7 hari lalu: −15. Dalam 30 hari: −8. Dalam 90 hari: −3.
+                  Kalau masih ada WO korektif yang <b style={{ color: C.text }}>belum selesai</b>: otomatis −20
+                  (aset dianggap sedang bermasalah).
+                </div>
+              </div>
+              <div style={{ paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.danger, marginBottom: 3 }}>Penalti Downtime (maks. −20)</div>
+                <div style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.55 }}>
+                  Total durasi perbaikan (jam) dalam 6 bulan terakhir, dibandingkan proporsional terhadap
+                  total waktu pengamatan. Aset yang lama "off-line" untuk diperbaiki mendapat penalti lebih besar.
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.ok, marginBottom: 3 }}>Bonus Kepatuhan PM (maks. +10)</div>
+                <div style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.55 }}>
+                  Dari riwayat siklus PM yang sudah selesai, dihitung rasio berapa persen yang diselesaikan
+                  tepat waktu atau lebih awal dari jatuh tempo. Mendorong perilaku preventive maintenance yang konsisten.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {level === "advance" && (
+          <div>
+            <p style={{ fontSize: 13, color: C.textDim, lineHeight: 1.6, margin: "0 0 14px" }}>
+              Pendekatan yang dipakai di sini adalah <b style={{ color: C.text }}>lag indicator</b> — menilai
+              kondisi berdasarkan apa yang <b style={{ color: C.text }}>sudah terjadi</b> (riwayat kegagalan).
+              Ini pendekatan paling umum dipakai di CMMS berbasis data historis. Beberapa catatan penting
+              untuk pemahaman lebih dalam:
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 16 }}>
+              <div style={{ paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 3 }}>Jendela Pengamatan 6 Bulan</div>
+                <div style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.55 }}>
+                  Hanya WO dalam 180 hari terakhir yang dihitung. Ini mencegah kejadian lama (misal setahun lalu)
+                  terus-menerus menghantui skor — mesin yang sudah lama stabil layak dianggap sehat lagi (konsep
+                  <i> rolling window</i>, umum dipakai di reliability engineering).
+                </div>
+              </div>
+              <div style={{ paddingBottom: 10, borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 3 }}>Lag Indicator vs Lead Indicator</div>
+                <div style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.55 }}>
+                  Health Score di sini adalah <b style={{ color: C.text }}>lag indicator</b> (berbasis riwayat).
+                  CMMS/IIoT tingkat lanjut biasanya menambah <b style={{ color: C.text }}>lead indicator</b> —
+                  data sensor real-time (getaran, suhu, tekanan) yang bisa mendeteksi potensi kegagalan
+                  <i> sebelum</i> benar-benar terjadi. Kombinasi FMEA (Detection) di modul lain adalah pendekatan
+                  paling dekat ke arah itu dalam aplikasi demo ini.
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 3 }}>Kenapa Bobot Dipilih Seperti Ini?</div>
+                <div style={{ fontSize: 12.5, color: C.textDim, lineHeight: 1.55 }}>
+                  Bobot (7 poin/kejadian, batas 45, dst) adalah <b style={{ color: C.text }}>contoh kalibrasi</b>
+                  untuk keperluan demo — di implementasi CMMS sungguhan, bobot ini biasanya dikalibrasi ulang
+                  berdasarkan data historis perusahaan (mis. analisis regresi terhadap kejadian breakdown besar),
+                  bukan angka tetap yang berlaku universal untuk semua industri.
+                </div>
+              </div>
+            </div>
+            <div style={{
+              padding: 12, borderRadius: 8, background: C.panel2, border: `1px solid ${C.border}`
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 4 }}>Kaitan dengan modul lain</div>
+              <div style={{ fontSize: 12, color: C.textDim, lineHeight: 1.6 }}>
+                Aset dengan Health Score rendah biasanya juga punya <b style={{ color: C.text }}>RPN tinggi di FMEA</b> —
+                karena keduanya sama-sama mencerminkan riwayat kegagalan yang sering. Ini bisa jadi bahan diskusi:
+                apakah FMEA-nya sudah dibuatkan mitigasi (Jadwal PM) untuk komponen yang berisiko tinggi tersebut?
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ===================================================
    PENJELASAN KONSEP FMEA — modal popup berisi pemaparan
    dasar FMEA, RPN, dan istilah-istilah terkait untuk
    peserta training yang baru mengenal metode ini.
@@ -902,13 +1187,14 @@ function getTdStyle(C) {
   return { padding: "11px 14px", color: C.steelLight };
 }
 /* ================== DASHBOARD ================== */
-function Dashboard({ assets, workOrders, pms, spareParts, C, onOpenAsset, onOpenWO, onNavigateTab }) {
+function Dashboard({ assets, workOrders, pms, pmHistory, spareParts, C, onOpenAsset, onOpenWO, onNavigateTab, onOpenHealthInfo }) {
   const { statusMeta, priorityMeta } = getMeta(C);
   const running = assets.filter(a => a.status === "running").length;
   const down = assets.filter(a => a.status === "down").length;
   const openWO = workOrders.filter(w => w.status !== "completed").length;
   const overduePM = pms.filter(p => p.status === "overdue").length;
-  const avgHealth = Math.round(assets.reduce((s, a) => s + a.health, 0) / assets.length);
+  const healthByAsset = assets.map(a => ({ ...a, healthResult: calcHealthScore(a.id, workOrders, pmHistory) }));
+  const avgHealth = Math.round(healthByAsset.reduce((s, a) => s + a.healthResult.score, 0) / assets.length);
   const lowStockParts = spareParts.filter(s => s.stock < s.minStock);
 
   return (
@@ -946,15 +1232,29 @@ function Dashboard({ assets, workOrders, pms, spareParts, C, onOpenAsset, onOpen
 
       <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14 }}>
         <Card C={C}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 14 }}>Kondisi Aset (Health Score)</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>Kondisi Aset (Health Score)</div>
+            <button
+              onClick={onOpenHealthInfo}
+              aria-label="Penjelasan Health Score"
+              title="Bagaimana Health Score dihitung?"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 16, height: 16, borderRadius: "50%", border: `1px solid ${C.border}`,
+                background: "transparent", color: C.textDim, cursor: "pointer", flexShrink: 0, padding: 0
+              }}
+            >
+              <HelpCircle size={10} />
+            </button>
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {assets.map(a => (
+            {healthByAsset.map(a => (
               <div key={a.id}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
                   <LinkButton C={C} onClick={() => onOpenAsset(a.id)}>{a.name}</LinkButton>
                   <Badge color={statusMeta[a.status].color}>{statusMeta[a.status].label}</Badge>
                 </div>
-                <HealthBar C={C} value={a.health} />
+                <HealthBar C={C} value={a.healthResult.score} />
               </div>
             ))}
           </div>
@@ -1168,7 +1468,7 @@ function WorkOrders({ workOrders, setWorkOrders, assets, pms, C, genWoId, onOpen
   );
 }
 /* ================== ASSET DETAIL PAGE ================== */
-function AssetDetail({ asset, workOrders, pms, fmea, spareParts, C, onBack, onOpenWO, onOpenFmeaTab }) {
+function AssetDetail({ asset, workOrders, pms, pmHistory, fmea, spareParts, C, onBack, onOpenWO, onOpenFmeaTab, onOpenHealthInfo }) {
   const { statusMeta, priorityMeta } = getMeta(C);
   const relatedWO = workOrders.filter(w => w.asset === asset.id).sort((a, b) => (a.created < b.created ? 1 : -1));
   const relatedPM = pms.filter(p => p.asset === asset.id);
@@ -1179,6 +1479,7 @@ function AssetDetail({ asset, workOrders, pms, fmea, spareParts, C, onBack, onOp
   const highestRpn = relatedFmea.length > 0
     ? Math.max(...relatedFmea.map(f => calcRPN(f.severity, f.occurrence, f.detection)))
     : null;
+  const healthResult = calcHealthScore(asset.id, workOrders, pmHistory);
 
   return (
     <div>
@@ -1190,8 +1491,22 @@ function AssetDetail({ asset, workOrders, pms, fmea, spareParts, C, onBack, onOp
           <Badge color={statusMeta[asset.status].color}>{statusMeta[asset.status].label}</Badge>
         </Card>
         <Card C={C}>
-          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 8 }}>Health Score</div>
-          <HealthBar C={C} value={asset.health} />
+          <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 8 }}>
+            <div style={{ fontSize: 12, color: C.textDim }}>Health Score</div>
+            <button
+              onClick={onOpenHealthInfo}
+              aria-label="Penjelasan Health Score"
+              title="Bagaimana Health Score dihitung?"
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 15, height: 15, borderRadius: "50%", border: `1px solid ${C.border}`,
+                background: "transparent", color: C.textDim, cursor: "pointer", flexShrink: 0, padding: 0
+              }}
+            >
+              <HelpCircle size={9} />
+            </button>
+          </div>
+          <HealthBar C={C} value={healthResult.score} />
         </Card>
         <Card C={C}>
           <div style={{ fontSize: 12, color: C.textDim, marginBottom: 6 }}>Total WO Korektif</div>
@@ -1341,14 +1656,15 @@ function AssetDetail({ asset, workOrders, pms, fmea, spareParts, C, onBack, onOp
 }
 
 /* ================== ASSET CARD (list view) ================== */
-function AssetCard({ asset, C, onSave, onDelete, isEditing, onStartEdit, onStopEdit, onOpenDetail }) {
+function AssetCard({ asset, workOrders, pmHistory, C, onSave, onDelete, isEditing, onStartEdit, onStopEdit, onOpenDetail, onOpenHealthInfo }) {
   const { statusMeta } = getMeta(C);
   const inputStyle = getInputStyle(C);
   const [draft, setDraft] = useState(asset);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const healthResult = calcHealthScore(asset.id, workOrders, pmHistory);
 
   const startEdit = () => { setDraft(asset); onStartEdit(asset.id); };
-  const save = () => { onSave({ ...draft, health: Number(draft.health) }); onStopEdit(); };
+  const save = () => { onSave(draft); onStopEdit(); };
   const cancel = () => onStopEdit();
 
   const handleDeleteClick = () => {
@@ -1397,7 +1713,22 @@ function AssetCard({ asset, C, onSave, onDelete, isEditing, onStartEdit, onStopE
           <span style={{ fontSize: 14.5, fontWeight: 600 }}>{asset.name}</span>
         </LinkButton>
         <div style={{ fontSize: 12, color: C.textDim, margin: "2px 0 12px" }}>{asset.id} • {asset.location}</div>
-        <HealthBar C={C} value={asset.health} />
+        <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 4 }}>
+          <span style={{ fontSize: 11, color: C.textDim }}>Health Score</span>
+          <button
+            onClick={onOpenHealthInfo}
+            aria-label="Penjelasan Health Score"
+            title="Bagaimana Health Score dihitung?"
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: 14, height: 14, borderRadius: "50%", border: `1px solid ${C.border}`,
+              background: "transparent", color: C.textDim, cursor: "pointer", flexShrink: 0, padding: 0
+            }}
+          >
+            <HelpCircle size={8} />
+          </button>
+        </div>
+        <HealthBar C={C} value={healthResult.score} />
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 12, fontSize: 11.5, color: C.textDim }}>
           <span>Maint. terakhir: {asset.lastMaint}</span>
         </div>
@@ -1440,14 +1771,8 @@ function AssetCard({ asset, C, onSave, onDelete, isEditing, onStartEdit, onStopE
             <option value="low">Kritikalitas: Rendah</option>
           </select>
         </div>
-        <div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-            <span style={{ fontSize: 12, color: C.textDim }}>Health score</span>
-            <span style={{ fontSize: 12, color: C.text, fontWeight: 600 }}>{draft.health}%</span>
-          </div>
-          <input type="range" min={0} max={100} value={draft.health}
-            onChange={e => setDraft({ ...draft, health: e.target.value })}
-            style={{ width: "100%", accentColor: C.ember }} />
+        <div style={{ fontSize: 11, color: C.textDim, display: "flex", alignItems: "center", gap: 5 }}>
+          <HelpCircle size={11} /> Health Score dihitung otomatis dari riwayat Work Order, tidak bisa diubah manual.
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <div>
@@ -1465,14 +1790,14 @@ function AssetCard({ asset, C, onSave, onDelete, isEditing, onStartEdit, onStopE
 }
 
 /* ================== ASSET LIST ================== */
-function Assets({ assets, setAssets, C, onOpenDetail }) {
+function Assets({ assets, workOrders, pmHistory, setAssets, C, onOpenDetail, onOpenHealthInfo }) {
   const inputStyle = getInputStyle(C);
   const [q, setQ] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({
     name: "", location: "", status: "running", criticality: "medium",
-    health: 100, lastMaint: "", nextMaint: ""
+    lastMaint: "", nextMaint: ""
   });
   const filtered = assets.filter(a =>
     a.name.toLowerCase().includes(q.toLowerCase()) || a.id.toLowerCase().includes(q.toLowerCase())
@@ -1495,9 +1820,9 @@ function Assets({ assets, setAssets, C, onOpenDetail }) {
         .filter(n => !isNaN(n));
       const nextNum = (nums.length ? Math.max(...nums) : 100) + 1;
       const newId = "AST-" + nextNum;
-      return [...prev, { ...form, id: newId, health: Number(form.health) }];
+      return [...prev, { ...form, id: newId }];
     });
-    setForm({ name: "", location: "", status: "running", criticality: "medium", health: 100, lastMaint: "", nextMaint: "" });
+    setForm({ name: "", location: "", status: "running", criticality: "medium", lastMaint: "", nextMaint: "" });
     setShowForm(false);
   };
 
@@ -1543,14 +1868,8 @@ function Assets({ assets, setAssets, C, onOpenDetail }) {
                 <option value="low">Kritikalitas: Rendah</option>
               </select>
             </div>
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ fontSize: 12, color: C.textDim }}>Health score</span>
-                <span style={{ fontSize: 12, color: C.text, fontWeight: 600 }}>{form.health}%</span>
-              </div>
-              <input type="range" min={0} max={100} value={form.health}
-                onChange={e => setForm({ ...form, health: e.target.value })}
-                style={{ width: "100%", accentColor: C.ember }} />
+            <div style={{ fontSize: 11, color: C.textDim, display: "flex", alignItems: "center", gap: 5 }}>
+              <HelpCircle size={11} /> Health Score aset baru akan mulai dari 100 (belum ada riwayat WO) dan dihitung otomatis seiring berjalannya waktu.
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <div>
@@ -1580,6 +1899,8 @@ function Assets({ assets, setAssets, C, onOpenDetail }) {
           <AssetCard
             key={a.id}
             asset={a}
+            workOrders={workOrders}
+            pmHistory={pmHistory}
             C={C}
             onSave={saveAsset}
             onDelete={deleteAsset}
@@ -1587,6 +1908,7 @@ function Assets({ assets, setAssets, C, onOpenDetail }) {
             onStartEdit={setEditingId}
             onStopEdit={() => setEditingId(null)}
             onOpenDetail={onOpenDetail}
+            onOpenHealthInfo={onOpenHealthInfo}
           />
         ))}
         {filtered.length === 0 && (
@@ -2229,7 +2551,7 @@ function PMHistory({ history, C, onOpenAsset, onOpenWO }) {
   );
 }
 /* ================== KPI / REPORTING ================== */
-function KPIReport({ assets, workOrders, C }) {
+function KPIReport({ assets, workOrders, pmHistory, C, onOpenHealthInfo }) {
   const { statusMeta } = getMeta(C);
   const [showMttrInfo, setShowMttrInfo] = useState(false);
   const completed = workOrders.filter(w => w.status === "completed").length;
@@ -2243,13 +2565,15 @@ function KPIReport({ assets, workOrders, C }) {
         ? `${(mtbfResult.value / 24).toFixed(1)} hari`
         : `${Math.round(mtbfResult.value)} jam`)
     : null;
-  const avgHealth = assets.length > 0 ? Math.round(assets.reduce((s, a) => s + a.health, 0) / assets.length) : 0;
+  const avgHealth = assets.length > 0
+    ? Math.round(assets.reduce((s, a) => s + calcHealthScore(a.id, workOrders, pmHistory).score, 0) / assets.length)
+    : 0;
 
   const kpis = [
     { label: "PM Compliance Rate", value: `${complianceRate}%`, trend: "up", icon: CheckCircle2, color: C.ok },
     { label: "MTTR (Mean Time to Repair)", value: mttrResult ? `${mttr} jam` : "Belum ada data", sub: mttrResult ? `dari ${mttrResult.sampleSize} WO korektif selesai` : null, trend: "down", icon: Clock, color: C.warn, showInfo: true },
     { label: "MTBF (Mean Time Between Failure)", value: mtbfDisplay || "Belum ada data", sub: mtbfResult ? `dari ${mtbfResult.sampleSize} jeda breakdown` : null, trend: "up", icon: TrendingUp, color: C.ok, showInfo: true },
-    { label: "Overall Equipment Health", value: `${avgHealth}%`, trend: "up", icon: Gauge, color: C.emberSoft },
+    { label: "Overall Equipment Health", value: `${avgHealth}%`, trend: "up", icon: Gauge, color: C.emberSoft, showHealthInfo: true },
   ];
 
   const byCriticality = ["high", "medium", "low"].map(c => ({
@@ -2282,6 +2606,20 @@ function KPIReport({ assets, workOrders, C }) {
                   onClick={() => setShowMttrInfo(true)}
                   aria-label="Penjelasan MTTR & MTBF"
                   title="Apa itu MTTR & MTBF?"
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 16, height: 16, borderRadius: "50%", border: `1px solid ${C.border}`,
+                    background: "transparent", color: C.textDim, cursor: "pointer", flexShrink: 0, padding: 0
+                  }}
+                >
+                  <HelpCircle size={10} />
+                </button>
+              )}
+              {k.showHealthInfo && (
+                <button
+                  onClick={onOpenHealthInfo}
+                  aria-label="Penjelasan Health Score"
+                  title="Bagaimana Health Score dihitung?"
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "center",
                     width: 16, height: 16, borderRadius: "50%", border: `1px solid ${C.border}`,
@@ -2797,6 +3135,7 @@ export default function CMMSDemo() {
   const [openAssetId, setOpenAssetId] = useState(null);
   const [openWOId, setOpenWOId] = useState(null);
   const [showAbout, setShowAbout] = useState(false);
+  const [showHealthInfo, setShowHealthInfo] = useState(false);
 
   // ID counters — dibuat sekali via useMemo, counter murni naik terus,
   // tidak pernah dihitung ulang dari isi array (itu penyebab bug lama).
@@ -2877,8 +3216,11 @@ export default function CMMSDemo() {
         return shouldBreakdown ? { ...a, status: "down" } : { ...a, status: "maintenance" };
       }
       if (phase === "completed") {
-        const boosted = Math.min(100, a.health + 8);
-        return { ...a, status: "running", health: boosted, lastMaint: todayStr() };
+        // Health Score tidak lagi di-boost manual di sini — sekarang otomatis
+        // ikut membaik dengan sendirinya karena calcHealthScore() menghitung
+        // ulang dari riwayat WO setiap kali dipanggil (breakdown yang sudah
+        // selesai & sudah lama berlalu otomatis mengurangi penalti).
+        return { ...a, status: "running", lastMaint: todayStr() };
       }
       return a;
     }));
@@ -3088,8 +3430,9 @@ export default function CMMSDemo() {
       {/* Main content */}
       <div style={{ flex: 1, padding: 26, overflowY: "auto" }}>
         {tab === "dashboard" && (
-          <Dashboard C={C} assets={assets} workOrders={workOrders} pms={pms} spareParts={spareParts}
-            onOpenAsset={openAssetDetail} onOpenWO={openWODetail} onNavigateTab={navigateTab} />
+          <Dashboard C={C} assets={assets} workOrders={workOrders} pms={pms} pmHistory={pmHistory} spareParts={spareParts}
+            onOpenAsset={openAssetDetail} onOpenWO={openWODetail} onNavigateTab={navigateTab}
+            onOpenHealthInfo={() => setShowHealthInfo(true)} />
         )}
 
         {tab === "wo" && !openWO && (
@@ -3104,12 +3447,13 @@ export default function CMMSDemo() {
         )}
 
         {tab === "assets" && !openAsset && (
-          <Assets C={C} assets={assets} setAssets={setAssets} onOpenDetail={openAssetDetail} />
+          <Assets C={C} assets={assets} workOrders={workOrders} pmHistory={pmHistory} setAssets={setAssets}
+            onOpenDetail={openAssetDetail} onOpenHealthInfo={() => setShowHealthInfo(true)} />
         )}
         {tab === "assets" && openAsset && (
-          <AssetDetail asset={openAsset} workOrders={workOrders} pms={pms} fmea={fmea} spareParts={spareParts} C={C}
+          <AssetDetail asset={openAsset} workOrders={workOrders} pms={pms} pmHistory={pmHistory} fmea={fmea} spareParts={spareParts} C={C}
             onBack={() => setOpenAssetId(null)} onOpenWO={openWODetail}
-            onOpenFmeaTab={() => navigateTab("fmea")} />
+            onOpenFmeaTab={() => navigateTab("fmea")} onOpenHealthInfo={() => setShowHealthInfo(true)} />
         )}
 
         {tab === "pm" && (
@@ -3128,8 +3472,13 @@ export default function CMMSDemo() {
           <SpareParts C={C} spareParts={spareParts} setSpareParts={setSpareParts} assets={assets}
             onOpenAsset={openAssetDetail} genSpId={genSpId} />
         )}
-        {tab === "kpi" && <KPIReport C={C} assets={assets} workOrders={workOrders} />}
+        {tab === "kpi" && (
+          <KPIReport C={C} assets={assets} workOrders={workOrders} pmHistory={pmHistory}
+            onOpenHealthInfo={() => setShowHealthInfo(true)} />
+        )}
       </div>
+
+      {showHealthInfo && <HealthScoreInfoModal C={C} onClose={() => setShowHealthInfo(false)} />}
     </div>
   );
 }
