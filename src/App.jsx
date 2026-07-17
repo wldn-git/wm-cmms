@@ -1301,7 +1301,7 @@ function WorkOrders({ workOrders, setWorkOrders, assets, pms, C, genWoId, onOpen
       ...form, id: genWoId(), status: "open",
       assignee: form.assignee.trim() || "Unassigned",
       created: stamp.split(" ")[0], startedAt: stamp, completedAt: "",
-      sourcePmId: null,
+      sourcePmId: null, partsUsed: [], partsDeducted: false,
       cycleProcessed: false, assetImpactOpened: false, assetImpactCompleted: false,
     };
     setWorkOrders(prev => [newWO, ...prev]);
@@ -2183,22 +2183,23 @@ function SpareParts({ spareParts, setSpareParts, assets, C, onOpenAsset, genSpId
    WO tertentu. Perubahan stok baru diterapkan saat WO selesai. */
 function PartUsagePicker({ wo, spareParts, C, onUpdateParts }) {
   const inputStyle = getInputStyle(C);
+  const partsUsed = wo.partsUsed || []; // pengaman: WO lama/tanpa field ini dianggap belum ada part terpakai
   const compatible = spareParts.filter(sp => sp.compatibleAssets.includes(wo.asset));
   const [selectedPart, setSelectedPart] = useState(compatible[0]?.id || "");
   const [qty, setQty] = useState(1);
 
   const addPart = () => {
     if (!selectedPart) return;
-    const existing = wo.partsUsed.find(p => p.partId === selectedPart);
+    const existing = partsUsed.find(p => p.partId === selectedPart);
     const nextParts = existing
-      ? wo.partsUsed.map(p => p.partId === selectedPart ? { ...p, qty: p.qty + Number(qty) } : p)
-      : [...wo.partsUsed, { partId: selectedPart, qty: Number(qty) }];
+      ? partsUsed.map(p => p.partId === selectedPart ? { ...p, qty: p.qty + Number(qty) } : p)
+      : [...partsUsed, { partId: selectedPart, qty: Number(qty) }];
     onUpdateParts(nextParts);
     setQty(1);
   };
 
   const removePart = (partId) => {
-    onUpdateParts(wo.partsUsed.filter(p => p.partId !== partId));
+    onUpdateParts(partsUsed.filter(p => p.partId !== partId));
   };
 
   const partName = (id) => spareParts.find(sp => sp.id === id)?.name || id;
@@ -2209,9 +2210,9 @@ function PartUsagePicker({ wo, spareParts, C, onUpdateParts }) {
     <Card C={C}>
       <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 12 }}>Spare Part Terpakai</div>
 
-      {wo.partsUsed.length > 0 ? (
+      {partsUsed.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: canEdit ? 14 : 0 }}>
-          {wo.partsUsed.map(p => (
+          {partsUsed.map(p => (
             <div key={p.partId} style={{
               display: "flex", justifyContent: "space-between", alignItems: "center",
               padding: "8px 0", borderBottom: `1px solid ${C.border}`
@@ -2258,7 +2259,7 @@ function PartUsagePicker({ wo, spareParts, C, onUpdateParts }) {
           <div style={{ fontSize: 12, color: C.textDim }}>Tidak ada spare part yang kompatibel dengan aset ini.</div>
         )
       )}
-      {!canEdit && wo.partsUsed.length > 0 && (
+      {!canEdit && partsUsed.length > 0 && (
         <div style={{ fontSize: 11, color: C.textDim, marginTop: 10, display: "flex", alignItems: "center", gap: 5 }}>
           <PackageMinus size={12} /> Stok sudah dipotong otomatis saat WO ini diselesaikan.
         </div>
@@ -3172,7 +3173,7 @@ export default function CMMSDemo() {
       created: stamp.split(" ")[0],
       startedAt: stamp,
       completedAt: "",
-      sourcePmId: pm.id,
+      sourcePmId: pm.id, partsUsed: [], partsDeducted: false,
       cycleProcessed: false, assetImpactOpened: false, assetImpactCompleted: false,
     };
     setWorkOrders(prev => [newWO, ...prev]);
